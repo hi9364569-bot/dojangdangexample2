@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>동대문구 임차인 계약 전 공공자료 확인 안내</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+  <style>
+    body { font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased">
+
+  <!-- 상단 공지 배너 -->
+  <div id="modeBanner" class="bg-amber-50 border-b border-amber-200 px-4 py-2.5 text-xs sm:text-sm text-amber-900">
+    <div class="max-w-5xl mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+      <div class="flex items-center gap-2">
+        <span id="modeBadge" class="inline-flex items-center px-2 py-0.5 rounded font-semibold bg-amber-200 text-amber-900 text-xs">시연용 화면</span>
+        <span id="modeDesc">현재 기본 상태는 <strong>시연용 가상자료</strong>로 동작합니다. 상단 우측에서 <strong>실제 API 연동 모드</strong>로 전환할 수 있습니다.</span>
+      </div>
+      <div class="flex items-center gap-2 shrink-0">
+        <button id="toggleLiveModeBtn" onclick="toggleLiveMode()" class="px-2.5 py-1 rounded bg-slate-800 text-white text-xs font-medium hover:bg-slate-700 transition">
+          실제 API 모드: OFF
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 헤더 -->
+  <header class="bg-white border-b border-slate-200">
+    <div class="max-w-5xl mx-auto px-4 py-6">
+      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <span class="text-xs font-semibold tracking-wider text-blue-700 uppercase">동대문구 주택 계약 전 체크 가이드</span>
+          <h1 class="text-2xl sm:text-3xl font-bold text-slate-900 mt-1">동대문구 임차인 계약 전 공공자료 확인</h1>
+          <p class="text-sm text-slate-600 mt-2">
+            계약 전에 건물 정보와 주변 거래자료를 확인해 보세요. 자료의 뜻과 추가로 확인할 항목을 함께 안내합니다. 각 정보의 출처와 기준일도 확인할 수 있습니다.
+          </p>
+        </div>
+        <div class="flex flex-wrap gap-2 shrink-0">
+          <a href="https://www.ddm.go.kr/www/contents.do?key=4018" target="_blank" rel="noopener noreferrer"
+             class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition shadow-sm">
+            동대문구 안심계약 상담
+          </a>
+        </div>
+      </div>
+
+      <!-- 범례 -->
+      <div class="mt-5 pt-4 border-t border-slate-100 flex flex-wrap items-center gap-3 text-xs text-slate-600">
+        <span class="font-semibold text-slate-700">자료 구분 기준:</span>
+        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 font-medium">
+          ● 공식자료 사실 (공공API·공적장부)
+        </span>
+        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-800 border border-indigo-200 font-medium">
+          ● 자체 산정 참고값 (과거 표본 비교)
+        </span>
+        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-50 text-rose-800 border border-rose-200 font-medium">
+          ● 별도 서류·공식 확인 필요 항목
+        </span>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-5xl mx-auto px-4 py-8 space-y-8">
+
+    <!-- 입력 및 시연 테스트 패널 -->
+    <section class="bg-white rounded-xl border border-slate-200 shadow-sm p-5 sm:p-6">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
+        <div>
+          <h2 class="text-lg font-bold text-slate-900">1. 확인 대상 주택 및 계약 조건 입력</h2>
+          <p class="text-xs text-slate-500 mt-0.5">주소를 입력해 조회하거나, 아래 시나리오 버튼으로 예외 상황별 안내 문구를 테스트하세요.</p>
+        </div>
+        <div id="demoScenarioButtons" class="flex flex-wrap gap-1.5">
+          <button onclick="loadScenario('A')" class="px-2.5 py-1.5 text-xs font-medium rounded-md bg-slate-100 hover:bg-blue-50 hover:text-blue-700 border border-slate-200 transition">
+            시나리오 A (정상 조회)
+          </button>
+          <button onclick="loadScenario('B')" class="px-2.5 py-1.5 text-xs font-medium rounded-md bg-slate-100 hover:bg-amber-50 hover:text-amber-700 border border-slate-200 transition">
+            시나리오 B (동명이인·다가구)
+          </button>
+          <button onclick="loadScenario('C')" class="px-2.5 py-1.5 text-xs font-medium rounded-md bg-slate-100 hover:bg-rose-50 hover:text-rose-700 border border-slate-200 transition">
+            시나리오 C (표본 부족·API 오류)
+          </button>
+        </div>
+      </div>
+
+      <form id="lookupForm" onsubmit="handleSearch(event)" class="mt-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div class="lg:col-span-2">
+          <label class="block text-xs font-semibold text-slate-700 mb-1">도로명주소 (동대문구)</label>
+          <input type="text" id="inputAddress" required placeholder="예: 서울특별시 동대문구 회기로 117"
+                 value="서울특별시 동대문구 휘경로 23"
+                 class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">주택 유형</label>
+          <select id="inputHouseType" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+            <option value="multiplex" selected>연립·다세대 (빌라)</option>
+            <option value="detached">단독·다가구</option>
+            <option value="apartment">아파트</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">전용면적 (㎡, 선택)</label>
+          <input type="number" step="0.1" id="inputArea" placeholder="예: 33.0" value="33.0"
+                 class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">예정 보증금 (만원)</label>
+          <input type="number" id="inputDeposit" required placeholder="예: 15000" value="15000"
+                 class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          <p id="depositWonHint" class="text-[11px] text-slate-500 mt-1">= 1억 5,000만 원 (150,000,000원)</p>
+        </div>
+        <div class="sm:col-span-2 lg:col-span-3">
+          <label class="block text-xs font-semibold text-slate-700 mb-1">임대인 성명 (HUG 공개명단 대조용 · 선택)</label>
+          <input type="text" id="inputLandlord" placeholder="계약서상 임대인 성명 입력 (동명이인 주의)" value="홍길동"
+                 class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <div class="sm:col-span-2 lg:col-span-2 flex items-end">
+          <button type="submit" id="submitBtn" class="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold rounded-lg transition shadow-sm">
+            공공자료 확인하기
+          </button>
+        </div>
+      </form>
+    </section>
+
+    <!-- 조회 결과 영역 -->
+    <div id="resultsContainer" class="space-y-6">
+      <!-- 동적 렌더링 -->
+    </div>
+
+    <!-- 추가 확인 공식 서비스 연결 카드 -->
+    <section class="bg-white rounded-xl border border-slate-200 shadow-sm p-5 sm:p-6">
+      <h2 class="text-lg font-bold text-slate-900">반드시 별도로 확인해야 할 공식 경로</h2>
+      <p class="text-xs text-slate-600 mt-1">
+        공개 API 조회 완료는 계약 전체의 안전 확인 완료를 뜻하지 않습니다. 등기상 근저당·압류, 임대인 세금 체납, 선순위 보증금, 위반건축물 여부는 아래 공식 경로에서 확인하세요.
+      </p>
+
+      <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+        <a href="https://www.gov.kr/mw/AA020InfoCappView.do?CappBizCD=15000000098" target="_blank" rel="noopener noreferrer"
+           class="block p-4 rounded-lg border border-slate-200 hover:border-blue-400 hover:bg-blue-50/30 transition">
+          <div class="flex items-center justify-between">
+            <span class="text-sm font-bold text-slate-900">1. 정부24 건축물대장 열람·발급</span>
+            <span class="text-xs font-medium text-blue-600">무료 열람 ↗</span>
+          </div>
+          <p class="text-xs text-slate-600 mt-1.5 leading-relaxed">
+            일반건축물대장과 집합건축물대장(표제부·전유부)을 구분하여 계약할 층·호실의 <strong>위반건축물 표시 및 변동사항</strong>을 직접 확인합니다.
+          </p>
+        </a>
+
+        <a href="https://onestop.khug.or.kr/" target="_blank" rel="noopener noreferrer"
+           class="block p-4 rounded-lg border border-slate-200 hover:border-blue-400 hover:bg-blue-50/30 transition">
+          <div class="flex items-center justify-between">
+            <span class="text-sm font-bold text-slate-900">2. 모바일 HUG (안심조회·보증서비스)</span>
+            <span class="text-xs font-medium text-blue-600">공식 서비스 ↗</span>
+          </div>
+          <p class="text-xs text-slate-600 mt-1.5 leading-relaxed">
+            단순 공개명단과 달리 계약 관계·계약 의사를 검증하여 제공하는 조건부 임대인 보증정보 조회 및 전세보증금반환보증 가입 요건을 확인합니다.
+          </p>
+        </a>
+
+        <a href="https://rt.molit.go.kr/pt/xls/xls.do" target="_blank" rel="noopener noreferrer"
+           class="block p-4 rounded-lg border border-slate-200 hover:border-blue-400 hover:bg-blue-50/30 transition">
+          <div class="flex items-center justify-between">
+            <span class="text-sm font-bold text-slate-900">3. 국토교통부 실거래가 공개시스템</span>
+            <span class="text-xs font-medium text-blue-600">원문 조회 ↗</span>
+          </div>
+          <p class="text-xs text-slate-600 mt-1.5 leading-relaxed">
+            주택 유형·지역·계약기간별 신고 거래내역 원문을 직접 조회합니다. (계약일 기준, 만원 단위, 정정·해제 반영 시점 확인)
+          </p>
+        </a>
+
+        <div class="p-4 rounded-lg border border-blue-200 bg-blue-50/40">
+          <div class="flex items-center justify-between">
+            <span class="text-sm font-bold text-blue-950">4. 동대문구 1인가구 전월세 안심계약 도움서비스</span>
+            <a href="https://www.ddm.go.kr/www/contents.do?key=4018" target="_blank" rel="noopener noreferrer" class="text-xs font-semibold text-blue-700 underline">안내 페이지 ↗</a>
+          </div>
+          <p class="text-xs text-slate-700 mt-1.5 leading-relaxed">
+            동대문구 거주(예정) 1인가구 대상 무료 상담(등기부·건축물대장 확인, 집보기·계약 동행). 월·목 13:30–17:30 예약 운영 (최소 2–3일 전 신청 권장, 부동산정보과 <strong>02-2127-4213</strong>).
+          </p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="bg-slate-900 text-slate-400 text-xs py-8 mt-12">
+    <div class="max-w-5xl mx-auto px-4 space-y-2">
+      <p class="text-slate-200 font-semibold">자료 출처 및 이용 안내</p>
+      <p>
+        본 서비스는 국토교통부 건축HUB 건축물대장정보 서비스, 국토교통부 실거래가 공개시스템, 주택도시보증공사(HUG) 상습 채무불이행자 정보공개 API 명세 및 동대문구청 안내 자료를 바탕으로 구성되었습니다.
+      </p>
+      <p>
+        표시되는 비교비율은 과거 신고 거래 표본에 근거한 자체 참고값이며, 공공기관의 공식 안전 판정 기준이나 해당 호실의 확정 시세, 보증금 반환 보장을 의미하지 않습니다.
+      </p>
+    </div>
+  </footer>
+
+  <script>
+    let isLiveApiMode = false;
+
+    const depositInput = document.getElementById('inputDeposit');
+    const depositWonHint = document.getElementById('depositWonHint');
+
+    function formatKoreanMoney(manwon) {
+      if (!manwon || isNaN(manwon)) return '0원';
+      const eok = Math.floor(manwon / 10000);
+      const rest = manwon % 10000;
+      let str = '';
+      if (eok > 0) str += `${eok}억 `;
+      if (rest > 0) str += `${rest.toLocaleString()}만 `;
+      str += `원 (${(manwon * 10000).toLocaleString()}원)`;
+      return str.trim();
+    }
+
+    depositInput.addEventListener('input', () => {
+      const val = parseInt(depositInput.value, 10);
+      depositWonHint.textContent = `= ${formatKoreanMoney(val)}`;
+    });
+
+    function toggleLiveMode() {
+      isLiveApiMode = !isLiveApiMode;
+      const btn = document.getElementById('toggleLiveModeBtn');
+      const badge = document.getElementById('modeBadge');
+      const desc = document.getElementById('modeDesc');
+      const banner = document.getElementById('modeBanner');
+      const demoBtns = document.getElementById('demoScenarioButtons');
+
+      if (isLiveApiMode) {
+        btn.textContent = '실제 API 모드: ON';
+        btn.classList.replace('bg-slate-800', 'bg-emerald-700');
+        badge.textContent = '실제 API 연동 모드';
+        badge.className = 'inline-flex items-center px-2 py-0.5 rounded font-semibold bg-emerald-200 text-emerald-900 text-xs';
+        desc.innerHTML = 'Netlify Functions(<code>/.netlify/functions/fetch-public-data</code>)를 통해 실제 공공데이터 API를 호출합니다. (환경변수 키 설정 필요)';
+        banner.className = 'bg-emerald-50 border-b border-emerald-200 px-4 py-2.5 text-xs sm:text-sm text-emerald-900';
+        demoBtns.classList.add('opacity-40', 'pointer-events-none');
+      } else {
+        btn.textContent = '실제 API 모드: OFF';
+        btn.classList.replace('bg-emerald-700', 'bg-slate-800');
+        badge.textContent = '시연용 화면';
+        badge.className = 'inline-flex items-center px-2 py-0.5 rounded font-semibold bg-amber-200 text-amber-900 text-xs';
+        desc.innerHTML = '현재 기본 상태는 <strong>시연용 가상자료</strong>로 동작합니다. 상단 우측에서 <strong>실제 API 연동 모드</strong>로 전환할 수 있습니다.';
+        banner.className = 'bg-amber-50 border-b border-amber-200 px-4 py-2.5 text-xs sm:text-sm text-amber-900';
+        demoBtns.classList.remove('opacity-40', 'pointer-events-none');
+        loadScenario('A');
+      }
+    }
+
+    // 시연용 프리셋 데이터
+    const demoScenarios = {
+      A: {
+        address: '서울특별시 동대문구 휘경로 23',
+        houseType: 'multiplex',
+        area: 33.0,
+        deposit: 15000,
+        landlord: '홍길동',
+        building: {
+          status: 'OK',
+          bldNm: '휘경스타빌 (시연용 가상자료)',
+          platPlc: '서울특별시 동대문구 휘경동 123-45',
+          mainPurpsCdNm: '공동주택(다세대주택)',
+          totArea: '642.50',
+          grndFlrCnt: '5',
+          ugrndFlrCnt: '1',
+          useAprDay: '20180914',
+          crtnDay: '20261031'
+        },
+        trades: {
+          status: 'OK',
+          sampleCount: 4,
+          periodMonths: 6,
+          medianManwon: 20000,
+          minManwon: 18500,
+          maxManwon: 21500,
+          minArea: 30.2,
+          maxArea: 34.8
+        },
+        hug: {
+          status: 'NO_MATCH',
+          stddDt: '2026-11-10'
+        }
+      },
+      B: {
+        address: '서울특별시 동대문구 이문로 45',
+        houseType: 'detached',
+        area: 24.5,
+        deposit: 12000,
+        landlord: '김철수',
+        building: {
+          status: 'OK',
+          bldNm: '(건물명 미등재 · 시연용 가상자료)',
+          platPlc: '서울특별시 동대문구 이문동 256-12',
+          mainPurpsCdNm: '단독주택(다가구주택)',
+          totArea: '498.12',
+          grndFlrCnt: '4',
+          ugrndFlrCnt: '1',
+          useAprDay: '20150422',
+          crtnDay: '20261031'
+        },
+        trades: {
+          status: 'EXCLUDED_TYPE',
+          reason: '단독·다가구 주택은 개별 방(호실) 보증금을 건물 전체 매매가격과 비교할 수 없어 비율 산정에서 제외됩니다.'
+        },
+        hug: {
+          status: 'MATCH_FOUND',
+          matches: [
+            { STDD_DT: '2026-11-10', CUST_NM: '김철수', AGE: '54', ADDR: '경기도 부천시 원미구 ○○로 (공개대상자 주소)' }
+          ]
+        }
+      },
+      C: {
+        address: '서울특별시 동대문구 장한로 88',
+        houseType: 'multiplex',
+        area: 45.0,
+        deposit: 18000,
+        landlord: '이영희',
+        building: {
+          status: 'OK',
+          bldNm: '장안리버뷰 (시연용 가상자료)',
+          platPlc: '서울특별시 동대문구 장안동 331-7',
+          mainPurpsCdNm: '제2종근린생활시설 및 다세대주택',
+          totArea: '810.00',
+          grndFlrCnt: '6',
+          ugrndFlrCnt: '1',
+          useAprDay: '20201105',
+          crtnDay: '20261031'
+        },
+        trades: {
+          status: 'INSUFFICIENT_SAMPLE',
+          sampleCount: 1,
+          periodMonths: 6,
+          reason: '최근 6개월 내 유사 면적 매매 표본이 1건으로 부족하여 비율을 산정하지 않았습니다.'
+        },
+        hug: {
+          status: 'API_ERROR',
+          errorCode: '03',
+          errorMsg: 'NO_DATA (인증키 또는 호출 오류 예시)'
+        }
+      }
+    };
+
+    function loadScenario(key) {
+      const sc = demoScenarios[key];
+      document.getElementById('inputAddress').value = sc.address;
+      document.getElementById('inputHouseType').value = sc.houseType;
+      document.getElementById('inputArea').value = sc.area;
+      document.getElementById('inputDeposit').value = sc.deposit;
+      document.getElementById('inputLandlord').value = sc.landlord;
+      depositWonHint.textContent = `= ${formatKoreanMoney(sc.deposit)}`;
+
+      const ratio = sc.trades.status === 'OK'
+        ? Number(((sc.deposit / sc.trades.medianManwon) * 100).toFixed(1))
+        : null;
+
+      renderResults({
+        isDemo: true,
+        queryTimestamp: new Date().toLocaleString('ko-KR'),
+        address: { roadAddr: sc.address, jibunAddr: sc.building.platPlc },
+        building: sc.building,
+        trades: { ...sc.trades, ratio },
+        hug: sc.hug,
+        depositManwon: sc.deposit
+      });
+    }
+
+    async function handleSearch(e) {
+      e.preventDefault();
+      const roadAddr = document.getElementById('inputAddress').value.trim();
+      const houseType = document.getElementById('inputHouseType').value;
+      const targetArea = parseFloat(document.getElementById('inputArea').value) || 0;
+      const depositManwon = parseInt(document.getElementById('inputDeposit').value, 10) || 0;
+      const landlordName = document.getElementById('inputLandlord').value.trim();
+
+      if (!isLiveApiMode) {
+        // 시연용 모드: 사용자 입력값을 반영해 가상 계산 시연
+        const baseTrades = demoScenarios.A.trades;
+        let tradesObj;
+        if (houseType === 'detached') {
+          tradesObj = {
+            status: 'EXCLUDED_TYPE',
+            reason: '단독·다가구 주택은 개별 방(호실) 보증금을 건물 전체 매매가격과 비교할 수 없어 비율 산정에서 제외됩니다.'
+          };
+        } else {
+          const ratio = Number(((depositManwon / baseTrades.medianManwon) * 100).toFixed(1));
+          tradesObj = { ...baseTrades, ratio };
+        }
+
+        renderResults({
+          isDemo: true,
+          queryTimestamp: new Date().toLocaleString('ko-KR'),
+          address: { roadAddr, jibunAddr: '시연용 가상 지번' },
+          building: { ...demoScenarios.A.building, platPlc: roadAddr },
+          trades: tradesObj,
+          hug: landlordName === '김철수' ? demoScenarios.B.hug : { status: 'NO_MATCH', stddDt: '2026-11-10' },
+          depositManwon
+        });
+        return;
+      }
+
+      // 실제 Netlify Function 호출
+      const submitBtn = document.getElementById('submitBtn');
+      submitBtn.disabled = true;
+      submitBtn.textContent = '공공데이터 API 조회 중...';
+
+      try {
+        const res = await fetch('/.netlify/functions/fetch-public-data', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ roadAddr, houseType, targetArea, depositManwon, landlordName })
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          alert(data.error || '조회 중 오류가 발생했습니다.');
+          return;
+        }
+
+        renderResults({
+          isDemo: false,
+          queryTimestamp: new Date(data.queryTimestamp).toLocaleString('ko-KR'),
+          address: data.address,
+          building: data.building,
+          trades: data.trades,
+          hug: data.hug,
+          depositManwon
+        });
+      } catch (err) {
+        alert('서버 연결에 실패했습니다. Netlify 환경에 배포되었는지 확인해 주세요.');
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = '공공자료 확인하기';
+      }
+    }
+
+    function renderResults(payload) {
+      const container = document.getElementById('resultsContainer');
+      const { isDemo, queryTimestamp, address, building, trades, hug, depositManwon } = payload;
+
+      // 1. 건물 기본정보 카드 HTML
+      let buildingHtml = '';
+      if (building.status === 'OK') {
+        buildingHtml = `
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4 text-sm">
+            <div class="p-3 rounded-lg bg-slate-50 border border-slate-100">
+              <div class="text-xs text-slate-500">건물명 / 지번</div>
+              <div class="font-semibold text-slate-900 mt-0.5">${building.bldNm}</div>
+              <div class="text-[11px] text-slate-500 mt-0.5">${building.platPlc}</div>
+            </div>
+            <div class="p-3 rounded-lg bg-slate-50 border border-slate-100">
+              <div class="text-xs text-slate-500">공부상 주용도</div>
+              <div class="font-semibold text-slate-900 mt-0.5">${building.mainPurpsCdNm}</div>
+              <div class="text-[11px] text-slate-500 mt-0.5">층·호별 용도는 대장 직접 확인</div>
+            </div>
+            <div class="p-3 rounded-lg bg-slate-50 border border-slate-100">
+              <div class="text-xs text-slate-500">연면적 / 층수</div>
+              <div class="font-semibold text-slate-900 mt-0.5">${building.totArea}㎡ / 지상 ${building.grndFlrCnt}층</div>
+              <div class="text-[11px] text-slate-500 mt-0.5">지하 ${building.ugrndFlrCnt || 0}층 · 전유면적 별도</div>
+            </div>
+            <div class="p-3 rounded-lg bg-slate-50 border border-slate-100">
+              <div class="text-xs text-slate-500">사용승인일</div>
+              <div class="font-semibold text-slate-900 mt-0.5">${building.useAprDay || '미기재'}</div>
+              <div class="text-[11px] text-slate-500 mt-0.5">기준일: ${building.crtnDay || '미제공'}</div>
+            </div>
+          </div>
+          <div class="mt-3 p-3 rounded-lg bg-rose-50/70 border border-rose-200 text-xs text-rose-900 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <span><strong>[위반건축물 여부 미확인]</strong> 현재 공개 API 응답만으로 위반건축물 유무를 단정할 수 없습니다. 정부24 건축물대장을 직접 열람해 주세요.</span>
+            <a href="https://www.gov.kr/mw/AA020InfoCappView.do?CappBizCD=15000000098" target="_blank" rel="noopener noreferrer"
+               class="shrink-0 px-2.5 py-1 rounded bg-rose-700 text-white font-medium hover:bg-rose-800 text-center">정부24 대장 열람 ↗</a>
+          </div>
+        `;
+      } else {
+        buildingHtml = `
+          <div class="mt-3 p-3.5 rounded-lg bg-slate-100 text-xs text-slate-700">
+            ${building.error || '건물 기본정보를 불러오지 못했습니다.'}
+          </div>
+        `;
+      }
+
+      // 2. 보증금 비교비율 카드 HTML
+      let tradesHtml = '';
+      if (trades.status === 'OK') {
+        tradesHtml = `
+          <div class="mt-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-xl bg-indigo-50/60 border border-indigo-200">
+            <div>
+              <div class="text-xs font-semibold text-indigo-800">유사 매매거래가 대비 보증금 비율 (자체 산정 참고값)</div>
+              <div class="text-3xl font-extrabold text-indigo-950 mt-1">${trades.ratio}%</div>
+              <p class="text-xs text-slate-600 mt-1">
+                예정 보증금 <strong>${depositManwon.toLocaleString()}만 원</strong> ÷ 유사 매매 중앙값 <strong>${trades.medianManwon.toLocaleString()}만 원</strong> × 100
+              </p>
+            </div>
+            <div class="text-xs bg-white p-3 rounded-lg border border-indigo-100 space-y-1 shrink-0 w-full sm:w-auto">
+              <div><span class="text-slate-500">비교 표본 수:</span> <strong>${trades.sampleCount}건</strong> (최근 ${trades.periodMonths}개월)</div>
+              <div><span class="text-slate-500">표본 면적 범위:</span> <strong>${trades.minArea ?? '-'}㎡ ~ ${trades.maxArea ?? '-'}㎡</strong></div>
+              <div><span class="text-slate-500">거래가격 범위:</span> <strong>${trades.minManwon.toLocaleString()} ~ ${trades.maxManwon.toLocaleString()}만 원</strong></div>
+            </div>
+          </div>
+          <p class="mt-2.5 text-xs text-slate-600 leading-relaxed">
+            ※ 이 비율은 입력한 보증금을 선정한 유사 매매거래의 참고가격과 비교한 값입니다. 거래 기간·건수·면적과 가격 범위를 함께 확인하세요. 해당 집의 확정 시세나 보증금 반환 보장 여부를 뜻하지 않으며, 수치만으로 안전·위험을 판정하지 않습니다.
+          </p>
+        `;
+      } else {
+        tradesHtml = `
+          <div class="mt-3 p-4 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-950 space-y-2">
+            <div class="font-bold">비율 산정 보류 안내</div>
+            <p>${trades.reason || trades.error || '비교할 거래자료가 부족해 비율을 계산하지 않았습니다.'}</p>
+            <a href="https://rt.molit.go.kr/pt/xls/xls.do" target="_blank" rel="noopener noreferrer"
+               class="inline-block px-2.5 py-1 rounded bg-amber-800 text-white font-medium hover:bg-amber-900">국토부 실거래가 공식 화면 확인 ↗</a>
+          </div>
+        `;
+      }
+
+      // 3. HUG 공개명단 대조 카드 HTML
+      let hugHtml = '';
+      if (hug.status === 'MATCH_FOUND') {
+        const matchRows = hug.matches.map(m => `
+          <div class="p-2.5 rounded bg-white border border-rose-200 text-xs flex flex-wrap gap-x-4 gap-y-1">
+            <span><strong>성명:</strong> ${m.CUST_NM}</span>
+            <span><strong>나이:</strong> ${m.AGE}세</span>
+            <span><strong>공개대상자 주소:</strong> ${m.ADDR}</span>
+            <span><strong>자료 기준일:</strong> ${m.STDD_DT}</span>
+          </div>
+        `).join('');
+        hugHtml = `
+          <div class="mt-3 p-4 rounded-lg bg-rose-50 border border-rose-300 text-xs text-rose-950 space-y-2.5">
+            <div class="font-bold text-sm text-rose-800">⚠ 동일한 이름의 공개대상이 있습니다. 계약 상대방과 같은 사람인지 추가 확인하세요.</div>
+            ${matchRows}
+            <p class="text-rose-800 leading-relaxed">
+              명단의 주소는 공개대상자의 인적사항이며 임대 중인 주택 목록이 아닙니다. 이름 일치만으로 동일인으로 확정할 수 없으므로 생년월일·신분증 및 모바일 HUG 공식 조회로 확인하세요.
+            </p>
+          </div>
+        `;
+      } else if (hug.status === 'NO_MATCH') {
+        hugHtml = `
+          <div class="mt-3 p-3.5 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-700 space-y-1">
+            <div class="font-semibold text-slate-900">이번 공개명단에서 일치 후보를 찾지 못했습니다. (자료 기준일: ${hug.stddDt || '기준일 미제공'})</div>
+            <p class="text-slate-600">HUG 공개명단은 법정 공개대상에 대한 자료이며 모든 미반환 사건을 포함하지 않습니다. 명단 미검색은 안전을 보장하지 않습니다.</p>
+          </div>
+        `;
+      } else if (hug.status === 'API_ERROR') {
+        hugHtml = `
+          <div class="mt-3 p-3.5 rounded-lg bg-amber-50 border border-amber-300 text-xs text-amber-950 space-y-1.5">
+            <div class="font-bold">공식 명단 조회를 완료하지 못했습니다. HUG 공식 화면에서 확인하세요.</div>
+            <p class="text-amber-800">오류 상태(${hug.errorCode || 'ERROR'}: ${hug.errorMsg || '응답 오류'})는 "명단에 없는 사람"을 의미하지 않습니다.</p>
+            <a href="https://www.khug.or.kr/jeonse/web/s01/s010321.jsp" target="_blank" rel="noopener noreferrer"
+               class="inline-block px-2.5 py-1 rounded bg-amber-800 text-white font-medium hover:bg-amber-900">HUG 공식 공개명단 바로가기 ↗</a>
+          </div>
+        `;
+      } else {
+        hugHtml = `
+          <div class="mt-3 p-3.5 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-600">
+            ${hug.message || hug.error || '임대인 명단 대조가 수행되지 않았습니다.'}
+          </div>
+        `;
+      }
+
+      container.innerHTML = `
+        <div class="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500 px-1">
+          <span>조회 대상: <strong class="text-slate-800">${address.roadAddr || ''}</strong></span>
+          <span>조회 시각: ${queryTimestamp} ${isDemo ? '(시연용 가상자료)' : '(실시간 API 호출)'}</span>
+        </div>
+
+        <!-- 카드 1: 건물 기본정보 -->
+        <section class="bg-white rounded-xl border border-slate-200 shadow-sm p-5 sm:p-6">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <h3 class="text-base font-bold text-slate-900">2-1. 건물 기본정보 및 위반건축물 확인 안내</h3>
+            <span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-800 border border-emerald-200">공식자료 사실 + 별도 확인</span>
+          </div>
+          <p class="text-xs text-slate-500 mt-1">출처: 국토교통부 건축HUB 건축물대장정보 서비스 (월간 갱신)</p>
+          ${buildingHtml}
+        </section>
+
+        <!-- 카드 2: 보증금 비교비율 -->
+        <section class="bg-white rounded-xl border border-slate-200 shadow-sm p-5 sm:p-6">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <h3 class="text-base font-bold text-slate-900">2-2. 유사 매매거래가 대비 보증금 비율</h3>
+            <span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-800 border border-indigo-200">자체 산정 참고값</span>
+          </div>
+          <p class="text-xs text-slate-500 mt-1">출처: 국토교통부 실거래가 공개시스템 신고자료 기반 자체 산정</p>
+          ${tradesHtml}
+        </section>
+
+        <!-- 카드 3: HUG 임대인 공개명단 -->
+        <section class="bg-white rounded-xl border border-slate-200 shadow-sm p-5 sm:p-6">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <h3 class="text-base font-bold text-slate-900">2-3. HUG 상습 채무불이행자 공개명단 대조</h3>
+            <span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-50 text-rose-800 border border-rose-200">동명이인·추가 확인 필요</span>
+          </div>
+          <p class="text-xs text-slate-500 mt-1">출처: 주택도시보증공사(HUG) 상습 채무불이행자 정보공개 API (제공 항목: 기준일·성명·나이·공개대상자 주소)</p>
+          ${hugHtml}
+        </section>
+      `;
+    }
+
+    // 초기 시나리오 A 로드
+    loadScenario('A');
+  </script>
+</body>
+</html>

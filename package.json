@@ -1,0 +1,8 @@
+{
+  "name": "dongdaemun-tenant-guide",
+  "version": "1.0.0",
+  "description": "동대문구 임차인 계약 전 공공자료 확인 안내 웹사이트 (Netlify Functions 연동)",
+  "dependencies": {
+    "fast-xml-parser": "^4.3.6"
+  }
+}
