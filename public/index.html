@@ -435,6 +435,13 @@
       const container = document.getElementById('resultsContainer');
       const { isDemo, queryTimestamp, address, building, trades, hug, depositManwon } = payload;
 
+      // 주소 변환 상세 오류 배너
+      const addrErrorBanner = (address && address.status && address.status !== 'OK')
+        ? `<div class="p-3.5 rounded-lg bg-rose-50 border border-rose-300 text-xs text-rose-900">
+             <strong>[주소 변환 상세 오류]</strong> 상태: ${address.status} / 사유: ${address.error || '알 수 없음'}
+           </div>`
+        : '';
+
       // 1. 건물 기본정보 카드 HTML
       let buildingHtml = '';
       if (building.status === 'OK') {
@@ -553,6 +560,7 @@
       }
 
       container.innerHTML = `
+        ${addrErrorBanner}
         <div class="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500 px-1">
           <span>조회 대상: <strong class="text-slate-800">${address.roadAddr || ''}</strong></span>
           <span>조회 시각: ${queryTimestamp} ${isDemo ? '(시연용 가상자료)' : '(실시간 API 호출)'}</span>
