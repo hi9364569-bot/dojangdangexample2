@@ -31,7 +31,6 @@ async function lookupAddress(roadAddr, jusoKey) {
   }
 
   const item = jusoList[0];
-  // admCd: 10자리 법정동코드 (앞 5자리 sigunguCd, 뒤 5자리 bjdongCd)
   const admCd = item.admCd || "";
   const sigunguCd = admCd.substring(0, 5);
   const bjdongCd = admCd.substring(5, 10);
@@ -102,7 +101,7 @@ async function fetchBuildingInfo(addrInfo, dataGoKrKey) {
     grndFlrCnt: target.grndFlrCnt || "",
     ugrndFlrCnt: target.ugrndFlrCnt || "",
     useAprDay: target.useAprDay || "",
-    crtnDay: target.crtnDay || "" // 원자료 기준일
+    crtnDay: target.crtnDay || ""
   };
 }
 
@@ -110,7 +109,6 @@ async function fetchBuildingInfo(addrInfo, dataGoKrKey) {
 async function fetchRealEstateTrades(sigunguCd, houseType, targetArea, depositManwon, dataGoKrKey) {
   if (!dataGoKrKey) return { status: "NO_KEY", error: "DATA_GO_KR_KEY가 설정되지 않았습니다." };
 
-  // 단독/다가구는 호실 보증금과 건물 전체 매매가 비교 불가 (조사 문서 원칙 반영)
   if (houseType === "detached") {
     return {
       status: "EXCLUDED_TYPE",
@@ -127,7 +125,6 @@ async function fetchRealEstateTrades(sigunguCd, houseType, targetArea, depositMa
     return { status: "INVALID_TYPE", error: "지원하지 않는 주택 유형입니다." };
   }
 
-  // 최근 6개월 계약연월(YYYYMM) 생성
   const now = new Date();
   const months = [];
   for (let i = 0; i < 6; i++) {
@@ -158,7 +155,6 @@ async function fetchRealEstateTrades(sigunguCd, houseType, targetArea, depositMa
     const items = Array.isArray(rawItems) ? rawItems : rawItems ? [rawItems] : [];
 
     for (const item of items) {
-      // 해제 여부 확인 (cdealType 필드가 비어있지 않으면 해제 거래로 제외)
       if (item.cdealType && String(item.cdealType).trim() !== "") continue;
 
       const area = parseFloat(item.excluUseAr || item["전용면적"] || "0");
@@ -167,7 +163,6 @@ async function fetchRealEstateTrades(sigunguCd, houseType, targetArea, depositMa
 
       if (!amountManwon || isNaN(amountManwon)) continue;
 
-      // 유사 전용면적 필터링 (사용자 입력 면적이 있을 경우 ±15% 이내)
       if (targetArea && targetArea > 0) {
         const diffRatio = Math.abs(area - targetArea) / targetArea;
         if (diffRatio > 0.15) continue;
@@ -183,7 +178,6 @@ async function fetchRealEstateTrades(sigunguCd, houseType, targetArea, depositMa
     }
   }
 
-  // 표본 부족 기준 (예: 최소 3건 미만 시 산정 보류)
   if (allTrades.length < 3) {
     return {
       status: "INSUFFICIENT_SAMPLE",
@@ -220,7 +214,7 @@ async function fetchRealEstateTrades(sigunguCd, houseType, targetArea, depositMa
   };
 }
 
-// 4. HUG 상습 채무불이행자 공개명단 조회 및 이름 대조
+// 4. HUG 상습 채무불이행자 공개명단 조회 및 이름 대조 (전체 페이지 순회 및 공백·부분일치 보완)
 async function checkHugDefaulterList(landlordName, hugApiKey) {
   if (!landlordName || !landlordName.trim()) {
     return { status: "SKIPPED", message: "임대인 성명이 입력되지 않아 명단 대조를 건너뛰었습니다." };
@@ -229,44 +223,84 @@ async function checkHugDefaulterList(landlordName, hugApiKey) {
     return { status: "NO_KEY", error: "HUG_API_KEY가 설정되지 않았습니다." };
   }
 
-  const url = `https://www.khug.or.kr/defaultOnDebitList.do?API_KEY=${encodeURIComponent(hugApiKey)}`;
-  const res = await fetchWithTimeout(url, {}, 10000);
-  const data = await res.json();
+  const allRows = [];
+  const pageSize = 1000;
 
-  // 공식 가이드 오류 처리 (ERROR_CODE 03 / ERROR_MSG NO_DATA 등을 '명단 없음'으로 오인하지 않도록 분리)
-  if (data?.ERROR_CODE || (data?.resultCode && data.resultCode !== "00")) {
-    return {
-      status: "API_ERROR",
-      errorCode: data.ERROR_CODE || data.resultCode,
-      errorMsg: data.ERROR_MSG || data.resultMsg || "HUG API 오류 응답"
-    };
+  // 최대 10페이지(10,000건)까지 전체 명단 수집
+  for (let pageNo = 1; pageNo <= 10; pageNo++) {
+    const hugUrl = new URL("https://www.khug.or.kr/defaultOnDebitList.do");
+    hugUrl.searchParams.set("API_KEY", hugApiKey);
+    hugUrl.searchParams.set("pageNo", String(pageNo));
+    hugUrl.searchParams.set("numOfRows", String(pageSize));
+    hugUrl.searchParams.set("pageIndex", String(pageNo));
+    hugUrl.searchParams.set("recordCountPerPage", String(pageSize));
+
+    const res = await fetchWithTimeout(hugUrl.toString(), {}, 10000);
+    const data = await res.json();
+
+    if (data?.ERROR_CODE || (data?.resultCode && data.resultCode !== "00" && data.resultCode !== "000")) {
+      // 1페이지 조회 후 다음 페이지가 없어서 NO_DATA(03)가 뜬 경우 정상 종료
+      if (pageNo > 1 && String(data.ERROR_CODE) === "03") break;
+      return {
+        status: "API_ERROR",
+        errorCode: data.ERROR_CODE || data.resultCode,
+        errorMsg: data.ERROR_MSG || data.resultMsg || "HUG API 오류 응답"
+      };
+    }
+
+    const list = Array.isArray(data)
+      ? data
+      : (data?.data || data?.list || data?.items || data?.resultList || data?.body?.items || []);
+
+    if (!Array.isArray(list) || list.length === 0) {
+      break;
+    }
+
+    allRows.push(...list);
+
+    // 받아온 건수가 요청 건수보다 적으면 마지막 페이지이므로 중단
+    if (list.length < pageSize) {
+      break;
+    }
   }
 
-  const list = Array.isArray(data) ? data : (data?.data || data?.list || data?.items || []);
-  if (!Array.isArray(list)) {
-    return { status: "API_ERROR", errorMsg: "HUG 응답 형식을 해석할 수 없습니다." };
+  if (allRows.length === 0) {
+    return { status: "API_ERROR", errorMsg: "HUG 공개명단 데이터를 수신하지 못했습니다 (0건)." };
   }
 
-  const cleanTarget = landlordName.trim();
-  const matches = list
-    .filter(row => String(row.CUST_NM || "").trim() === cleanTarget)
+  // 공백 및 특수기호(주식회사/(주)) 정리 후 비교
+  const normalizeName = (str) =>
+    String(str || "")
+      .replace(/\s+/g, "")
+      .replace(/\(주\)|주식회사/g, "")
+      .toLowerCase();
+
+  const cleanTarget = normalizeName(landlordName);
+
+  const matches = allRows
+    .filter(row => {
+      const candidate = normalizeName(row.CUST_NM || row.custNm || row["성명"]);
+      return candidate && (candidate === cleanTarget || candidate.includes(cleanTarget));
+    })
     .map(row => ({
-      STDD_DT: row.STDD_DT || "",
-      CUST_NM: row.CUST_NM || "",
-      AGE: row.AGE || "",
-      ADDR: row.ADDR || ""
+      STDD_DT: row.STDD_DT || row.stddDt || "",
+      CUST_NM: row.CUST_NM || row.custNm || "",
+      AGE: row.AGE || row.age || "",
+      ADDR: row.ADDR || row.addr || ""
     }));
 
   if (matches.length > 0) {
     return {
       status: "MATCH_FOUND",
+      totalChecked: allRows.length,
       matches
     };
   }
 
   return {
     status: "NO_MATCH",
-    stddDt: list[0]?.STDD_DT || ""
+    totalChecked: allRows.length,
+    stddDt: allRows[0]?.STDD_DT || allRows[0]?.stddDt || ""
   };
 }
 
