@@ -214,7 +214,7 @@ async function fetchRealEstateTrades(sigunguCd, houseType, targetArea, depositMa
   };
 }
 
-// 4. HUG 상습 채무불이행자 공개명단 조회 및 이름 대조 (단일 호출 + 안전 파싱 + 유연한 이름 비교)
+// 4. HUG 상습 채무불이행자 공개명단 조회 및 이름 대조 (전국 명단 병렬 호출)
 async function checkHugDefaulterList(landlordName, hugApiKey) {
   if (!landlordName || !landlordName.trim()) {
     return { status: "SKIPPED", message: "임대인 성명이 입력되지 않아 명단 대조를 건너뛰었습니다." };
@@ -224,38 +224,65 @@ async function checkHugDefaulterList(landlordName, hugApiKey) {
   }
 
   try {
-    const url = `https://www.khug.or.kr/defaultOnDebitList.do?API_KEY=${encodeURIComponent(hugApiKey)}`;
-    const res = await fetchWithTimeout(url, {}, 7000);
-    const rawText = await res.text();
+    const pages = [1, 2, 3, 4, 5];
+    const pageSize = 1000;
 
-    let data;
-    try {
-      data = JSON.parse(rawText);
-    } catch {
+    const requests = pages.map(async (pageNo) => {
+      const url = new URL("https://www.khug.or.kr/defaultOnDebitList.do");
+      url.searchParams.set("API_KEY", hugApiKey);
+      url.searchParams.set("pageNo", String(pageNo));
+      url.searchParams.set("numOfRows", String(pageSize));
+      url.searchParams.set("pageIndex", String(pageNo));
+      url.searchParams.set("recordCountPerPage", String(pageSize));
+
+      const res = await fetchWithTimeout(url.toString(), {}, 6000);
+      const rawText = await res.text();
+      try {
+        return JSON.parse(rawText);
+      } catch {
+        return null;
+      }
+    });
+
+    const results = await Promise.all(requests);
+    const firstData = results[0];
+
+    if (!firstData) {
       return {
         status: "API_ERROR",
-        errorCode: `HTTP_${res.status}`,
-        errorMsg: "HUG 서버가 JSON이 아닌 응답을 반환했습니다. 잠시 후 다시 시도하거나 공식 화면을 확인하세요."
+        errorCode: "PARSE_ERROR",
+        errorMsg: "HUG 서버 응답을 해석할 수 없습니다. 공식 화면에서 확인해 주세요."
       };
     }
 
-    if (data?.ERROR_CODE || (data?.resultCode && data.resultCode !== "00" && data.resultCode !== "000")) {
+    if (firstData?.ERROR_CODE || (firstData?.resultCode && firstData.resultCode !== "00" && firstData.resultCode !== "000")) {
       return {
         status: "API_ERROR",
-        errorCode: data.ERROR_CODE || data.resultCode,
-        errorMsg: data.ERROR_MSG || data.resultMsg || "HUG API 오류 응답"
+        errorCode: firstData.ERROR_CODE || firstData.resultCode,
+        errorMsg: firstData.ERROR_MSG || firstData.resultMsg || "HUG API 오류 응답"
       };
     }
 
-    const list = Array.isArray(data)
-      ? data
-      : (data?.data || data?.list || data?.items || data?.resultList || data?.body?.items || []);
+    const allRows = [];
+    const seen = new Set();
 
-    if (!Array.isArray(list)) {
-      return { status: "API_ERROR", errorMsg: "HUG 응답 형식을 해석할 수 없습니다." };
+    for (const data of results) {
+      if (!data || data?.ERROR_CODE) continue;
+      const list = Array.isArray(data)
+        ? data
+        : (data?.data || data?.list || data?.items || data?.resultList || data?.body?.items || []);
+
+      if (!Array.isArray(list)) continue;
+
+      for (const row of list) {
+        const key = `${row.CUST_NM || ""}_${row.AGE || ""}_${row.ADDR || ""}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          allRows.push(row);
+        }
+      }
     }
 
-    // 공백, (주)/주식회사 표기 제거 후 비교
     const normalizeName = (str) =>
       String(str || "")
         .replace(/\s+/g, "")
@@ -264,7 +291,7 @@ async function checkHugDefaulterList(landlordName, hugApiKey) {
 
     const cleanTarget = normalizeName(landlordName);
 
-    const matches = list
+    const matches = allRows
       .filter(row => {
         const candidate = normalizeName(row.CUST_NM || row.custNm || row["성명"]);
         return candidate && (candidate === cleanTarget || candidate.includes(cleanTarget));
@@ -279,15 +306,15 @@ async function checkHugDefaulterList(landlordName, hugApiKey) {
     if (matches.length > 0) {
       return {
         status: "MATCH_FOUND",
-        totalChecked: list.length,
+        totalChecked: allRows.length,
         matches
       };
     }
 
     return {
       status: "NO_MATCH",
-      totalChecked: list.length,
-      stddDt: list[0]?.STDD_DT || list[0]?.stddDt || ""
+      totalChecked: allRows.length,
+      stddDt: allRows[0]?.STDD_DT || allRows[0]?.stddDt || ""
     };
   } catch (err) {
     return {
