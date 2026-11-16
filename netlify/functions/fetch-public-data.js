@@ -1,359 +1,400 @@
-const { XMLParser } = require("fast-xml-parser");
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>동대문구 임차인 계약 전 공공자료 확인 안내</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+  <style>
+    body { font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased">
 
-const xmlParser = new XMLParser({
-  ignoreAttributes: false,
-  parseTagValue: false
-});
+  <!-- 헤더 -->
+  <header class="bg-white border-b border-slate-200">
+    <div class="max-w-5xl mx-auto px-4 py-6">
+      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <span class="text-xs font-semibold tracking-wider text-blue-700 uppercase">동대문구 주택 계약 전 체크 가이드</span>
+          <h1 class="text-2xl sm:text-3xl font-bold text-slate-900 mt-1">동대문구 임차인 계약 전 공공자료 확인</h1>
+          <p class="text-sm text-slate-600 mt-2">
+            계약 전에 건물 정보와 주변 거래자료를 확인해 보세요. 자료의 뜻과 추가로 확인할 항목을 함께 안내합니다. 각 정보의 출처와 기준일도 확인할 수 있습니다.
+          </p>
+        </div>
+        <div class="flex flex-wrap gap-2 shrink-0">
+          <a href="https://www.ddm.go.kr/www/contents.do?key=4018" target="_blank" rel="noopener noreferrer"
+             class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition shadow-sm">
+            동대문구 안심계약 상담
+          </a>
+        </div>
+      </div>
 
-async function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
-  const controller = new AbortController();
-  const id = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetch(url, { ...options, signal: controller.signal });
-    return response;
-  } finally {
-    clearTimeout(id);
-  }
-}
+      <!-- 범례 -->
+      <div class="mt-5 pt-4 border-t border-slate-100 flex flex-wrap items-center gap-3 text-xs text-slate-600">
+        <span class="font-semibold text-slate-700">자료 구분 기준:</span>
+        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 font-medium">
+          ● 공식자료 사실 (공공API·공적장부)
+        </span>
+        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-800 border border-indigo-200 font-medium">
+          ● 자체 산정 참고값 (과거 표본 비교)
+        </span>
+        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-50 text-rose-800 border border-rose-200 font-medium">
+          ● 별도 서류·공식 확인 필요 항목
+        </span>
+      </div>
+    </div>
+  </header>
 
-// 1. 주소 변환 (행정안전부 주소기반산업지원서비스)
-async function lookupAddress(roadAddr, jusoKey) {
-  if (!jusoKey) return { status: "NO_KEY", error: "JUSO_API_KEY가 설정되지 않았습니다." };
-  const url = `https://business.juso.go.kr/addrlink/addrLinkApi.do?confmKey=${encodeURIComponent(jusoKey)}&currentPage=1&countPerPage=5&keyword=${encodeURIComponent(roadAddr)}&resultType=json`;
-  const res = await fetchWithTimeout(url);
-  const data = await res.json();
-  const common = data?.results?.common;
-  const jusoList = data?.results?.juso;
+  <main class="max-w-5xl mx-auto px-4 py-8 space-y-8">
 
-  if (common?.errorCode !== "0" || !jusoList || jusoList.length === 0) {
-    return { status: "NOT_FOUND", error: common?.errorMessage || "일치하는 주소를 찾지 못했습니다." };
-  }
+    <!-- 입력 패널 -->
+    <section class="bg-white rounded-xl border border-slate-200 shadow-sm p-5 sm:p-6">
+      <div class="pb-4 border-b border-slate-100">
+        <h2 class="text-lg font-bold text-slate-900">1. 확인 대상 주택 및 계약 조건 입력</h2>
+        <p class="text-xs text-slate-500 mt-0.5">동대문구 주택의 도로명주소와 예정 계약 조건을 입력하면 공공데이터를 실시간으로 조회합니다.</p>
+      </div>
 
-  const item = jusoList[0];
-  const admCd = item.admCd || "";
-  const sigunguCd = admCd.substring(0, 5);
-  const bjdongCd = admCd.substring(5, 10);
-  const bun = String(item.lnbrMnnm || "0").padStart(4, "0");
-  const ji = String(item.lnbrSlno || "0").padStart(4, "0");
-  const platGbCd = item.mtYn === "1" ? "1" : "0";
+      <form id="lookupForm" onsubmit="handleSearch(event)" class="mt-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div class="lg:col-span-2">
+          <label class="block text-xs font-semibold text-slate-700 mb-1">도로명주소 (동대문구)</label>
+          <input type="text" id="inputAddress" required placeholder="예: 서울특별시 동대문구 회기로 117"
+                 class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">주택 유형</label>
+          <select id="inputHouseType" class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
+            <option value="multiplex" selected>연립·다세대 (빌라)</option>
+            <option value="detached">단독·다가구</option>
+            <option value="apartment">아파트</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">전용면적 (㎡, 선택)</label>
+          <input type="number" step="0.1" id="inputArea" placeholder="예: 33.0"
+                 class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">예정 보증금 (만원)</label>
+          <input type="number" id="inputDeposit" required placeholder="예: 15000"
+                 class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          <p id="depositWonHint" class="text-[11px] text-slate-500 mt-1">만원 단위로 입력 (예: 1억 5천만 원 → 15000)</p>
+        </div>
+        <div class="sm:col-span-2 lg:col-span-3">
+          <label class="block text-xs font-semibold text-slate-700 mb-1">임대인 성명 (HUG 공개명단 대조용 · 선택)</label>
+          <input type="text" id="inputLandlord" placeholder="계약서상 임대인 성명 입력 (동명이인 주의)"
+                 class="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <div class="sm:col-span-2 lg:col-span-2 flex items-end">
+          <button type="submit" id="submitBtn" class="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold rounded-lg transition shadow-sm">
+            공공자료 확인하기
+          </button>
+        </div>
+      </form>
+    </section>
 
-  return {
-    status: "OK",
-    roadAddr: item.roadAddr,
-    jibunAddr: item.jibunAddr,
-    bdNm: item.bdNm || "",
-    sigunguCd,
-    bjdongCd,
-    platGbCd,
-    bun,
-    ji
-  };
-}
+    <!-- 조회 결과 영역 -->
+    <div id="resultsContainer" class="space-y-6">
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-8 text-center space-y-2">
+        <p class="text-sm font-semibold text-slate-800">확인하려는 동대문구 주택의 도로명주소와 조건을 입력해 주세요.</p>
+        <p class="text-xs text-slate-500">상단의 <strong>공공자료 확인하기</strong> 버튼을 누르면 건축물대장, 실거래가 비교비율, HUG 공개명단 대조 결과를 실시간으로 불러옵니다.</p>
+      </div>
+    </div>
 
-// 2. 건축물대장 표제부 조회 (국토교통부 건축HUB)
-async function fetchBuildingInfo(addrInfo, dataGoKrKey) {
-  if (!dataGoKrKey) return { status: "NO_KEY", error: "DATA_GO_KR_KEY가 설정되지 않았습니다." };
-  const baseUrl = "https://apis.data.go.kr/1613000/BldRgstHubService/getBrTitleInfo";
-  const params = new URLSearchParams({
-    serviceKey: dataGoKrKey,
-    sigunguCd: addrInfo.sigunguCd,
-    bjdongCd: addrInfo.bjdongCd,
-    platGbCd: addrInfo.platGbCd,
-    bun: addrInfo.bun,
-    ji: addrInfo.ji,
-    numOfRows: "10",
-    pageNo: "1",
-    _type: "json"
-  });
+    <!-- 추가 확인 공식 서비스 연결 카드 -->
+    <section class="bg-white rounded-xl border border-slate-200 shadow-sm p-5 sm:p-6">
+      <h2 class="text-lg font-bold text-slate-900">반드시 별도로 확인해야 할 공식 경로</h2>
+      <p class="text-xs text-slate-600 mt-1">
+        공개 API 조회 완료는 계약 전체의 안전 확인 완료를 뜻하지 않습니다. 등기상 근저당·압류, 임대인 세금 체납, 선순위 보증금, 위반건축물 여부는 아래 공식 경로에서 확인하세요.
+      </p>
 
-  const res = await fetchWithTimeout(`${baseUrl}?${params.toString()}`);
-  const text = await res.text();
-  let parsed;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    parsed = xmlParser.parse(text);
-  }
+      <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+        <a href="https://www.gov.kr/mw/AA020InfoCappView.do?CappBizCD=15000000098" target="_blank" rel="noopener noreferrer"
+           class="block p-4 rounded-lg border border-slate-200 hover:border-blue-400 hover:bg-blue-50/30 transition">
+          <div class="flex items-center justify-between">
+            <span class="text-sm font-bold text-slate-900">1. 정부24 건축물대장 열람·발급</span>
+            <span class="text-xs font-medium text-blue-600">무료 열람 ↗</span>
+          </div>
+          <p class="text-xs text-slate-600 mt-1.5 leading-relaxed">
+            일반건축물대장과 집합건축물대장(표제부·전유부)을 구분하여 계약할 층·호실의 <strong>위반건축물 표시 및 변동사항</strong>을 직접 확인합니다.
+          </p>
+        </a>
 
-  const header = parsed?.response?.header;
-  if (header && header.resultCode !== "00") {
-    return { status: "API_ERROR", error: `${header.resultCode}: ${header.resultMsg}` };
-  }
+        <a href="https://onestop.khug.or.kr/" target="_blank" rel="noopener noreferrer"
+           class="block p-4 rounded-lg border border-slate-200 hover:border-blue-400 hover:bg-blue-50/30 transition">
+          <div class="flex items-center justify-between">
+            <span class="text-sm font-bold text-slate-900">2. 모바일 HUG (안심조회·보증서비스)</span>
+            <span class="text-xs font-medium text-blue-600">공식 서비스 ↗</span>
+          </div>
+          <p class="text-xs text-slate-600 mt-1.5 leading-relaxed">
+            단순 공개명단과 달리 계약 관계·계약 의사를 검증하여 제공하는 조건부 임대인 보증정보 조회 및 전세보증금반환보증 가입 요건을 확인합니다.
+          </p>
+        </a>
 
-  const rawItems = parsed?.response?.body?.items?.item;
-  const items = Array.isArray(rawItems) ? rawItems : rawItems ? [rawItems] : [];
+        <a href="https://rt.molit.go.kr/pt/xls/xls.do" target="_blank" rel="noopener noreferrer"
+           class="block p-4 rounded-lg border border-slate-200 hover:border-blue-400 hover:bg-blue-50/30 transition">
+          <div class="flex items-center justify-between">
+            <span class="text-sm font-bold text-slate-900">3. 국토교통부 실거래가 공개시스템</span>
+            <span class="text-xs font-medium text-blue-600">원문 조회 ↗</span>
+          </div>
+          <p class="text-xs text-slate-600 mt-1.5 leading-relaxed">
+            주택 유형·지역·계약기간별 신고 거래내역 원문을 직접 조회합니다. (계약일 기준, 만원 단위, 정정·해제 반영 시점 확인)
+          </p>
+        </a>
 
-  if (items.length === 0) {
-    return { status: "EMPTY", error: "해당 지번의 건축물대장 표제부 자료가 조회되지 않았습니다." };
-  }
+        <div class="p-4 rounded-lg border border-blue-200 bg-blue-50/40">
+          <div class="flex items-center justify-between">
+            <span class="text-sm font-bold text-blue-950">4. 동대문구 1인가구 전월세 안심계약 도움서비스</span>
+            <a href="https://www.ddm.go.kr/www/contents.do?key=4018" target="_blank" rel="noopener noreferrer" class="text-xs font-semibold text-blue-700 underline">안내 페이지 ↗</a>
+          </div>
+          <p class="text-xs text-slate-700 mt-1.5 leading-relaxed">
+            동대문구 거주(예정) 1인가구 대상 무료 상담(등기부·건축물대장 확인, 집보기·계약 동행). 월·목 13:30–17:30 예약 운영 (최소 2–3일 전 신청 권장, 부동산정보과 <strong>02-2127-4213</strong>).
+          </p>
+        </div>
+      </div>
+    </section>
 
-  const target = items[0];
-  return {
-    status: "OK",
-    buildingCount: items.length,
-    platPlc: target.platPlc || addrInfo.jibunAddr,
-    newPlatPlc: target.newPlatPlc || addrInfo.roadAddr,
-    bldNm: target.bldNm || addrInfo.bdNm || "(건물명 미등재)",
-    mainPurpsCdNm: target.mainPurpsCdNm || "미상",
-    etcPurps: target.etcPurps || "",
-    totArea: target.totArea || "",
-    grndFlrCnt: target.grndFlrCnt || "",
-    ugrndFlrCnt: target.ugrndFlrCnt || "",
-    useAprDay: target.useAprDay || "",
-    crtnDay: target.crtnDay || ""
-  };
-}
+  </main>
 
-// 3. 주변 매매 실거래가 조회 (주택 유형별 API 분기)
-async function fetchRealEstateTrades(sigunguCd, houseType, targetArea, depositManwon, dataGoKrKey) {
-  if (!dataGoKrKey) return { status: "NO_KEY", error: "DATA_GO_KR_KEY가 설정되지 않았습니다." };
+  <footer class="bg-slate-900 text-slate-400 text-xs py-8 mt-12">
+    <div class="max-w-5xl mx-auto px-4 space-y-2">
+      <p class="text-slate-200 font-semibold">자료 출처 및 이용 안내</p>
+      <p>
+        본 서비스는 국토교통부 건축HUB 건축물대장정보 서비스, 국토교통부 실거래가 공개시스템, 주택도시보증공사(HUG) 상습 채무불이행자 정보공개 API 명세 및 동대문구청 안내 자료를 바탕으로 구성되었습니다.
+      </p>
+      <p>
+        표시되는 비교비율은 과거 신고 거래 표본에 근거한 자체 참고값이며, 공공기관의 공식 안전 판정 기준이나 해당 호실의 확정 시세, 보증금 반환 보장을 의미하지 않습니다.
+      </p>
+    </div>
+  </footer>
 
-  if (houseType === "detached") {
-    return {
-      status: "EXCLUDED_TYPE",
-      reason: "단독·다가구 주택은 개별 방(호실) 보증금을 건물 전체 매매가격과 비교할 수 없어 비율 산정에서 제외됩니다."
-    };
-  }
+  <script>
+    const depositInput = document.getElementById('inputDeposit');
+    const depositWonHint = document.getElementById('depositWonHint');
 
-  const endpointMap = {
-    multiplex: "https://apis.data.go.kr/1613000/RTMSDataSvcRHTrade2/getRTMSDataSvcRHTrade2",
-    apartment: "https://apis.data.go.kr/1613000/RTMSDataSvcAptTradeDev/getRTMSDataSvcAptTradeDev"
-  };
-  const endpoint = endpointMap[houseType];
-  if (!endpoint) {
-    return { status: "INVALID_TYPE", error: "지원하지 않는 주택 유형입니다." };
-  }
+    function formatKoreanMoney(manwon) {
+      if (!manwon || isNaN(manwon)) return '만원 단위로 입력 (예: 1억 5천만 원 → 15000)';
+      const eok = Math.floor(manwon / 10000);
+      const rest = manwon % 10000;
+      let str = '= ';
+      if (eok > 0) str += `${eok}억 `;
+      if (rest > 0) str += `${rest.toLocaleString()}만 `;
+      str += `원 (${(manwon * 10000).toLocaleString()}원)`;
+      return str.trim();
+    }
 
-  const now = new Date();
-  const months = [];
-  for (let i = 0; i < 6; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const ym = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}`;
-    months.push(ym);
-  }
-
-  const allTrades = [];
-  for (const ym of months) {
-    const params = new URLSearchParams({
-      serviceKey: dataGoKrKey,
-      LAWD_CD: sigunguCd,
-      DEAL_YMD: ym,
-      numOfRows: "100",
-      pageNo: "1"
+    depositInput.addEventListener('input', () => {
+      const val = parseInt(depositInput.value, 10);
+      depositWonHint.textContent = formatKoreanMoney(val);
     });
 
-    const res = await fetchWithTimeout(`${endpoint}?${params.toString()}`);
-    const xmlText = await res.text();
-    const parsed = xmlParser.parse(xmlText);
-    const header = parsed?.response?.header;
-    if (header && header.resultCode !== "00" && header.resultCode !== "000") {
-      return { status: "API_ERROR", error: `${header.resultCode}: ${header.resultMsg}` };
+    async function handleSearch(e) {
+      e.preventDefault();
+      const roadAddr = document.getElementById('inputAddress').value.trim();
+      const houseType = document.getElementById('inputHouseType').value;
+      const targetArea = parseFloat(document.getElementById('inputArea').value) || 0;
+      const depositManwon = parseInt(document.getElementById('inputDeposit').value, 10) || 0;
+      const landlordName = document.getElementById('inputLandlord').value.trim();
+
+      const submitBtn = document.getElementById('submitBtn');
+      submitBtn.disabled = true;
+      submitBtn.textContent = '공공데이터 API 조회 중...';
+
+      try {
+        const res = await fetch('/.netlify/functions/fetch-public-data', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ roadAddr, houseType, targetArea, depositManwon, landlordName })
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          alert(data.error || '조회 중 오류가 발생했습니다.');
+          return;
+        }
+
+        renderResults({
+          queryTimestamp: new Date(data.queryTimestamp).toLocaleString('ko-KR'),
+          address: data.address,
+          building: data.building,
+          trades: data.trades,
+          hug: data.hug,
+          depositManwon
+        });
+      } catch (err) {
+        alert('서버 연결에 실패했습니다. 잠시 후 다시 시도해 주세요.');
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = '공공자료 확인하기';
+      }
     }
 
-    const rawItems = parsed?.response?.body?.items?.item;
-    const items = Array.isArray(rawItems) ? rawItems : rawItems ? [rawItems] : [];
+    function renderResults(payload) {
+      const container = document.getElementById('resultsContainer');
+      const { queryTimestamp, address, building, trades, hug, depositManwon } = payload;
 
-    for (const item of items) {
-      if (item.cdealType && String(item.cdealType).trim() !== "") continue;
+      const addrErrorBanner = (address && address.status && address.status !== 'OK')
+        ? `<div class="p-3.5 rounded-lg bg-rose-50 border border-rose-300 text-xs text-rose-900">
+             <strong>[주소 확인 안내]</strong> 입력하신 주소를 찾지 못했습니다. 도로명과 건물번호를 정확히 입력해 주세요. (상세: ${address.error || address.status})
+           </div>`
+        : '';
 
-      const area = parseFloat(item.excluUseAr || item["전용면적"] || "0");
-      const rawAmount = String(item.dealAmount || item["거래금액"] || "0").replace(/,/g, "").trim();
-      const amountManwon = parseInt(rawAmount, 10);
-
-      if (!amountManwon || isNaN(amountManwon)) continue;
-
-      if (targetArea && targetArea > 0) {
-        const diffRatio = Math.abs(area - targetArea) / targetArea;
-        if (diffRatio > 0.15) continue;
+      let buildingHtml = '';
+      if (building.status === 'OK') {
+        buildingHtml = `
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4 text-sm">
+            <div class="p-3 rounded-lg bg-slate-50 border border-slate-100">
+              <div class="text-xs text-slate-500">건물명 / 지번</div>
+              <div class="font-semibold text-slate-900 mt-0.5">${building.bldNm}</div>
+              <div class="text-[11px] text-slate-500 mt-0.5">${building.platPlc}</div>
+            </div>
+            <div class="p-3 rounded-lg bg-slate-50 border border-slate-100">
+              <div class="text-xs text-slate-500">공부상 주용도</div>
+              <div class="font-semibold text-slate-900 mt-0.5">${building.mainPurpsCdNm}</div>
+              <div class="text-[11px] text-slate-500 mt-0.5">층·호별 용도는 대장 직접 확인</div>
+            </div>
+            <div class="p-3 rounded-lg bg-slate-50 border border-slate-100">
+              <div class="text-xs text-slate-500">연면적 / 층수</div>
+              <div class="font-semibold text-slate-900 mt-0.5">${building.totArea}㎡ / 지상 ${building.grndFlrCnt}층</div>
+              <div class="text-[11px] text-slate-500 mt-0.5">지하 ${building.ugrndFlrCnt || 0}층 · 전유면적 별도</div>
+            </div>
+            <div class="p-3 rounded-lg bg-slate-50 border border-slate-100">
+              <div class="text-xs text-slate-500">사용승인일</div>
+              <div class="font-semibold text-slate-900 mt-0.5">${building.useAprDay || '미기재'}</div>
+              <div class="text-[11px] text-slate-500 mt-0.5">기준일: ${building.crtnDay || '미제공'}</div>
+            </div>
+          </div>
+          <div class="mt-3 p-3 rounded-lg bg-rose-50/70 border border-rose-200 text-xs text-rose-900 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <span><strong>[위반건축물 여부 미확인]</strong> 현재 공개 API 응답만으로 위반건축물 유무를 단정할 수 없습니다. 정부24 건축물대장을 직접 열람해 주세요.</span>
+            <a href="https://www.gov.kr/mw/AA020InfoCappView.do?CappBizCD=15000000098" target="_blank" rel="noopener noreferrer"
+               class="shrink-0 px-2.5 py-1 rounded bg-rose-700 text-white font-medium hover:bg-rose-800 text-center">정부24 대장 열람 ↗</a>
+          </div>
+        `;
+      } else {
+        buildingHtml = `
+          <div class="mt-3 p-3.5 rounded-lg bg-slate-100 text-xs text-slate-700">
+            ${building.error || '건물 기본정보를 불러오지 못했습니다.'}
+          </div>
+        `;
       }
 
-      allTrades.push({
-        ym,
-        area,
-        amountManwon,
-        dong: item.umdNm || item["법정동"] || "",
-        name: item.mhouseNm || item.aptNm || item["연립다세대"] || item["아파트"] || ""
-      });
+      let tradesHtml = '';
+      if (trades.status === 'OK') {
+        tradesHtml = `
+          <div class="mt-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-xl bg-indigo-50/60 border border-indigo-200">
+            <div>
+              <div class="text-xs font-semibold text-indigo-800">유사 매매거래가 대비 보증금 비율 (자체 산정 참고값)</div>
+              <div class="text-3xl font-extrabold text-indigo-950 mt-1">${trades.ratio}%</div>
+              <p class="text-xs text-slate-600 mt-1">
+                예정 보증금 <strong>${depositManwon.toLocaleString()}만 원</strong> ÷ 유사 매매 중앙값 <strong>${trades.medianManwon.toLocaleString()}만 원</strong> × 100
+              </p>
+            </div>
+            <div class="text-xs bg-white p-3 rounded-lg border border-indigo-100 space-y-1 shrink-0 w-full sm:w-auto">
+              <div><span class="text-slate-500">비교 표본 수:</span> <strong>${trades.sampleCount}건</strong> (최근 ${trades.periodMonths}개월)</div>
+              <div><span class="text-slate-500">표본 면적 범위:</span> <strong>${trades.minArea ?? '-'}㎡ ~ ${trades.maxArea ?? '-'}㎡</strong></div>
+              <div><span class="text-slate-500">거래가격 범위:</span> <strong>${trades.minManwon.toLocaleString()} ~ ${trades.maxManwon.toLocaleString()}만 원</strong></div>
+            </div>
+          </div>
+          <p class="mt-2.5 text-xs text-slate-600 leading-relaxed">
+            ※ 이 비율은 입력한 보증금을 선정한 유사 매매거래의 참고가격과 비교한 값입니다. 거래 기간·건수·면적과 가격 범위를 함께 확인하세요. 해당 집의 확정 시세나 보증금 반환 보장 여부를 뜻하지 않으며, 수치만으로 안전·위험을 판정하지 않습니다.
+          </p>
+        `;
+      } else {
+        tradesHtml = `
+          <div class="mt-3 p-4 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-950 space-y-2">
+            <div class="font-bold">비율 산정 보류 안내</div>
+            <p>${trades.reason || trades.error || '비교할 거래자료가 부족해 비율을 계산하지 않았습니다.'}</p>
+            <a href="https://rt.molit.go.kr/pt/xls/xls.do" target="_blank" rel="noopener noreferrer"
+               class="inline-block px-2.5 py-1 rounded bg-amber-800 text-white font-medium hover:bg-amber-900">국토부 실거래가 공식 화면 확인 ↗</a>
+          </div>
+        `;
+      }
+
+      let hugHtml = '';
+      if (hug.status === 'MATCH_FOUND') {
+        const matchRows = hug.matches.map(m => `
+          <div class="p-2.5 rounded bg-white border border-rose-200 text-xs flex flex-wrap gap-x-4 gap-y-1">
+            <span><strong>성명:</strong> ${m.CUST_NM}</span>
+            <span><strong>나이:</strong> ${m.AGE}세</span>
+            <span><strong>공개대상자 주소:</strong> ${m.ADDR}</span>
+            <span><strong>자료 기준일:</strong> ${m.STDD_DT}</span>
+          </div>
+        `).join('');
+        hugHtml = `
+          <div class="mt-3 p-4 rounded-lg bg-rose-50 border border-rose-300 text-xs text-rose-950 space-y-2.5">
+            <div class="font-bold text-sm text-rose-800">⚠ 동일한 이름의 공개대상이 있습니다. 계약 상대방과 같은 사람인지 추가 확인하세요.</div>
+            ${matchRows}
+            <p class="text-rose-800 leading-relaxed">
+              명단의 주소는 공개대상자의 인적사항이며 임대 중인 주택 목록이 아닙니다. 이름 일치만으로 동일인으로 확정할 수 없으므로 생년월일·신분증 및 모바일 HUG 공식 조회로 확인하세요.
+            </p>
+          </div>
+        `;
+      } else if (hug.status === 'NO_MATCH') {
+        hugHtml = `
+          <div class="mt-3 p-3.5 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-700 space-y-2">
+            <div class="font-semibold text-slate-900">이번 공개명단에서 일치 후보를 찾지 못했습니다. (${hug.stddDt || '기준일 미제공'})</div>
+            <p class="text-slate-600 leading-relaxed">
+              ※ HUG Open API 명단은 제공 기준일 이후 새롭게 추가된 최신 공개대상자나 법정 공개 기준 외 미반환 사건을 포함하지 않습니다. 명단 미검색은 안전을 보장하지 않으므로, 최신 명단은 HUG 공식 홈페이지(안심전세포털)에서 반드시 함께 확인하세요.
+            </p>
+            <div>
+              <a href="https://www.khug.or.kr/jeonse/web/s01/s010321.jsp" target="_blank" rel="noopener noreferrer"
+                 class="inline-block px-3 py-1.5 rounded bg-slate-800 text-white font-medium hover:bg-slate-700 transition">HUG 안심전세포털 최신 공개명단 확인 ↗</a>
+            </div>
+          </div>
+        `;
+      } else if (hug.status === 'API_ERROR') {
+        hugHtml = `
+          <div class="mt-3 p-3.5 rounded-lg bg-amber-50 border border-amber-300 text-xs text-amber-950 space-y-1.5">
+            <div class="font-bold">공식 명단 조회를 완료하지 못했습니다. HUG 공식 화면에서 확인하세요.</div>
+            <p class="text-amber-800">오류 상태(${hug.errorCode || 'ERROR'}: ${hug.errorMsg || '응답 오류'})는 "명단에 없는 사람"을 의미하지 않습니다.</p>
+            <a href="https://www.khug.or.kr/jeonse/web/s01/s010321.jsp" target="_blank" rel="noopener noreferrer"
+               class="inline-block px-2.5 py-1 rounded bg-amber-800 text-white font-medium hover:bg-amber-900">HUG 공식 공개명단 바로가기 ↗</a>
+          </div>
+        `;
+      } else {
+        hugHtml = `
+          <div class="mt-3 p-3.5 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-600">
+            ${hug.message || hug.error || '임대인 명단 대조가 수행되지 않았습니다.'}
+          </div>
+        `;
+      }
+
+      container.innerHTML = `
+        ${addrErrorBanner}
+        <div class="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500 px-1">
+          <span>조회 대상: <strong class="text-slate-800">${address.roadAddr || ''}</strong></span>
+          <span>조회 시각: ${queryTimestamp}</span>
+        </div>
+
+        <section class="bg-white rounded-xl border border-slate-200 shadow-sm p-5 sm:p-6">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <h3 class="text-base font-bold text-slate-900">2-1. 건물 기본정보 및 위반건축물 확인 안내</h3>
+            <span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-800 border border-emerald-200">공식자료 사실 + 별도 확인</span>
+          </div>
+          <p class="text-xs text-slate-500 mt-1">출처: 국토교통부 건축HUB 건축물대장정보 서비스 (월간 갱신)</p>
+          ${buildingHtml}
+        </section>
+
+        <section class="bg-white rounded-xl border border-slate-200 shadow-sm p-5 sm:p-6">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <h3 class="text-base font-bold text-slate-900">2-2. 유사 매매거래가 대비 보증금 비율</h3>
+            <span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-50 text-indigo-800 border border-indigo-200">자체 산정 참고값</span>
+          </div>
+          <p class="text-xs text-slate-500 mt-1">출처: 국토교통부 실거래가 공개시스템 신고자료 기반 자체 산정</p>
+          ${tradesHtml}
+        </section>
+
+        <section class="bg-white rounded-xl border border-slate-200 shadow-sm p-5 sm:p-6">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <h3 class="text-base font-bold text-slate-900">2-3. HUG 상습 채무불이행자 공개명단 대조</h3>
+            <span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-50 text-rose-800 border border-rose-200">동명이인·추가 확인 필요</span>
+          </div>
+          <p class="text-xs text-slate-500 mt-1">출처: 주택도시보증공사(HUG) 상습 채무불이행자 정보공개 API (제공 항목: 기준일·성명·나이·공개대상자 주소)</p>
+          ${hugHtml}
+        </section>
+      `;
     }
-  }
-
-  if (allTrades.length < 3) {
-    return {
-      status: "INSUFFICIENT_SAMPLE",
-      sampleCount: allTrades.length,
-      periodMonths: 6,
-      reason: `최근 6개월 내 유사 면적 매매 표본이 ${allTrades.length}건으로 부족하여 비율을 산정하지 않았습니다.`
-    };
-  }
-
-  const sortedPrices = allTrades.map(t => t.amountManwon).sort((a, b) => a - b);
-  const mid = Math.floor(sortedPrices.length / 2);
-  const medianManwon = sortedPrices.length % 2 !== 0
-    ? sortedPrices[mid]
-    : Math.round((sortedPrices[mid - 1] + sortedPrices[mid]) / 2);
-
-  const minManwon = sortedPrices[0];
-  const maxManwon = sortedPrices[sortedPrices.length - 1];
-  const areas = allTrades.map(t => t.area).filter(a => a > 0);
-  const minArea = areas.length ? Math.min(...areas) : null;
-  const maxArea = areas.length ? Math.max(...areas) : null;
-
-  const ratio = depositManwon > 0 ? Number(((depositManwon / medianManwon) * 100).toFixed(1)) : null;
-
-  return {
-    status: "OK",
-    sampleCount: allTrades.length,
-    periodMonths: 6,
-    medianManwon,
-    minManwon,
-    maxManwon,
-    minArea,
-    maxArea,
-    ratio
-  };
-}
-
-// 4. HUG 상습 채무불이행자 공개명단 조회 (전체 1,980건 대조 및 기준일 포맷팅)
-async function checkHugDefaulterList(landlordName, hugApiKey) {
-  if (!landlordName || !landlordName.trim()) {
-    return { status: "SKIPPED", message: "임대인 성명이 입력되지 않아 명단 대조를 건너뛰었습니다." };
-  }
-  if (!hugApiKey) {
-    return { status: "NO_KEY", error: "HUG_API_KEY가 설정되지 않았습니다." };
-  }
-
-  try {
-    const url = `https://www.khug.or.kr/defaultOnDebitList.do?API_KEY=${encodeURIComponent(hugApiKey)}`;
-    const res = await fetchWithTimeout(url, {}, 8000);
-    const rawText = await res.text();
-
-    let data;
-    try {
-      data = JSON.parse(rawText);
-    } catch {
-      return {
-        status: "API_ERROR",
-        errorCode: `HTTP_${res.status}`,
-        errorMsg: "HUG 서버 응답을 해석할 수 없습니다. 공식 화면에서 확인해 주세요."
-      };
-    }
-
-    if (data?.ERROR_CODE) {
-      return {
-        status: "API_ERROR",
-        errorCode: data.ERROR_CODE,
-        errorMsg: data.ERROR_MSG || "HUG API 오류"
-      };
-    }
-
-    const allRows = Array.isArray(data) ? data : (data?.data || data?.list || data?.items || data?.resultList || []);
-    const formatDate = (d) => {
-      const s = String(d || "").trim();
-      return s.length === 8 ? `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}` : s;
-    };
-
-    const cleanTarget = landlordName
-      .replace(/\s+/g, "")
-      .replace(/\(주\)|주식회사/g, "")
-      .toLowerCase();
-
-    const matches = allRows
-      .filter(row => {
-        const candidate = String(row.CUST_NM || "")
-          .replace(/\s+/g, "")
-          .replace(/\(주\)|주식회사/g, "")
-          .toLowerCase();
-        return candidate && (candidate === cleanTarget || candidate.includes(cleanTarget));
-      })
-      .map(row => ({
-        STDD_DT: formatDate(row.STDD_DT),
-        CUST_NM: row.CUST_NM || "",
-        AGE: row.AGE || "",
-        ADDR: row.ADDR || ""
-      }));
-
-    if (matches.length > 0) {
-      return { status: "MATCH_FOUND", matches };
-    }
-
-    return {
-      status: "NO_MATCH",
-      stddDt: `${formatDate(allRows[0]?.STDD_DT) || "미상"} 기준 Open API 명단 ${allRows.length.toLocaleString()}건 대조`
-    };
-  } catch (err) {
-    return {
-      status: "API_ERROR",
-      errorCode: "ERR",
-      errorMsg: err.message
-    };
-  }
-}
-
-exports.handler = async function (event) {
-  if (event.httpMethod !== "POST") {
-    return { statusCode: 405, body: JSON.stringify({ error: "Method Not Allowed" }) };
-  }
-
-  try {
-    const body = JSON.parse(event.body || "{}");
-    const { roadAddr, houseType, targetArea, depositManwon, landlordName } = body;
-
-    if (!roadAddr || !roadAddr.trim()) {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({ error: "도로명주소를 입력해 주세요." })
-      };
-    }
-
-    const jusoKey = process.env.JUSO_API_KEY;
-    const dataGoKrKey = process.env.DATA_GO_KR_KEY;
-    const hugApiKey = process.env.HUG_API_KEY;
-
-    const queryTimestamp = new Date().toISOString();
-
-    const addrResult = await lookupAddress(roadAddr.trim(), jusoKey);
-    if (addrResult.status !== "OK") {
-      return {
-        statusCode: 200,
-        headers: { "Content-Type": "application/json; charset=utf-8" },
-        body: JSON.stringify({
-          queryTimestamp,
-          address: addrResult,
-          building: { status: "SKIPPED", error: "주소 코드 변환 실패로 조회하지 못했습니다." },
-          trades: { status: "SKIPPED", error: "주소 코드 변환 실패로 조회하지 못했습니다." },
-          hug: await checkHugDefaulterList(landlordName, hugApiKey)
-        })
-      };
-    }
-
-    const [buildingResult, tradesResult, hugResult] = await Promise.all([
-      fetchBuildingInfo(addrResult, dataGoKrKey),
-      fetchRealEstateTrades(
-        addrResult.sigunguCd,
-        houseType || "multiplex",
-        parseFloat(targetArea) || 0,
-        parseFloat(depositManwon) || 0,
-        dataGoKrKey
-      ),
-      checkHugDefaulterList(landlordName, hugApiKey)
-    ]);
-
-    return {
-      statusCode: 200,
-      headers: { "Content-Type": "application/json; charset=utf-8" },
-      body: JSON.stringify({
-        queryTimestamp,
-        address: addrResult,
-        building: buildingResult,
-        trades: tradesResult,
-        hug: hugResult
-      })
-    };
-  } catch (err) {
-    return {
-      statusCode: 500,
-      headers: { "Content-Type": "application/json; charset=utf-8" },
-      body: JSON.stringify({ error: "서버 처리 중 오류가 발생했습니다.", detail: err.message })
-    };
-  }
-};
+  </script>
+</body>
+</html>
