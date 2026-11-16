@@ -214,7 +214,7 @@ async function fetchRealEstateTrades(sigunguCd, houseType, targetArea, depositMa
   };
 }
 
-// 4. HUG 상습 채무불이행자 공개명단 조회 및 이름 대조 (전국 명단 병렬 호출)
+// 4. HUG 상습 채무불이행자 공개명단 조회 (HUG 서버 직접 이름 검색 + 전체 명단 대조 병행)
 async function checkHugDefaulterList(landlordName, hugApiKey) {
   if (!landlordName || !landlordName.trim()) {
     return { status: "SKIPPED", message: "임대인 성명이 입력되지 않아 명단 대조를 건너뛰었습니다." };
@@ -223,31 +223,34 @@ async function checkHugDefaulterList(landlordName, hugApiKey) {
     return { status: "NO_KEY", error: "HUG_API_KEY가 설정되지 않았습니다." };
   }
 
+  const rawTarget = landlordName.trim();
+
   try {
-    const pages = [1, 2, 3, 4, 5];
-    const pageSize = 1000;
+    // ① HUG 서버에 CUST_NM 파라미터로 직접 이름 검색 요청 + ② 기본 전체 목록 요청 병행
+    const searchUrl = new URL("https://www.khug.or.kr/defaultOnDebitList.do");
+    searchUrl.searchParams.set("API_KEY", hugApiKey);
+    searchUrl.searchParams.set("CUST_NM", rawTarget);
+    searchUrl.searchParams.set("numOfRows", "1000");
+    searchUrl.searchParams.set("pageNo", "1");
 
-    const requests = pages.map(async (pageNo) => {
-      const url = new URL("https://www.khug.or.kr/defaultOnDebitList.do");
-      url.searchParams.set("API_KEY", hugApiKey);
-      url.searchParams.set("pageNo", String(pageNo));
-      url.searchParams.set("numOfRows", String(pageSize));
-      url.searchParams.set("pageIndex", String(pageNo));
-      url.searchParams.set("recordCountPerPage", String(pageSize));
+    const defaultUrl = new URL("https://www.khug.or.kr/defaultOnDebitList.do");
+    defaultUrl.searchParams.set("API_KEY", hugApiKey);
+    defaultUrl.searchParams.set("numOfRows", "5000");
+    defaultUrl.searchParams.set("pageNo", "1");
 
-      const res = await fetchWithTimeout(url.toString(), {}, 6000);
-      const rawText = await res.text();
-      try {
-        return JSON.parse(rawText);
-      } catch {
-        return null;
-      }
-    });
+    const [searchRes, defaultRes] = await Promise.all([
+      fetchWithTimeout(searchUrl.toString(), {}, 6000).then(r => r.text()).catch(() => ""),
+      fetchWithTimeout(defaultUrl.toString(), {}, 6000).then(r => r.text()).catch(() => "")
+    ]);
 
-    const results = await Promise.all(requests);
-    const firstData = results[0];
+    const parseJsonSafe = (txt) => {
+      try { return JSON.parse(txt); } catch { return null; }
+    };
 
-    if (!firstData) {
+    const d1 = parseJsonSafe(searchRes);
+    const d2 = parseJsonSafe(defaultRes);
+
+    if (!d1 && !d2) {
       return {
         status: "API_ERROR",
         errorCode: "PARSE_ERROR",
@@ -255,31 +258,35 @@ async function checkHugDefaulterList(landlordName, hugApiKey) {
       };
     }
 
-    if (firstData?.ERROR_CODE || (firstData?.resultCode && firstData.resultCode !== "00" && firstData.resultCode !== "000")) {
-      return {
-        status: "API_ERROR",
-        errorCode: firstData.ERROR_CODE || firstData.resultCode,
-        errorMsg: firstData.ERROR_MSG || firstData.resultMsg || "HUG API 오류 응답"
-      };
-    }
-
-    const allRows = [];
-    const seen = new Set();
-
-    for (const data of results) {
-      if (!data || data?.ERROR_CODE) continue;
-      const list = Array.isArray(data)
+    const extractList = (data) => {
+      if (!data || data?.ERROR_CODE) return [];
+      const arr = Array.isArray(data)
         ? data
         : (data?.data || data?.list || data?.items || data?.resultList || data?.body?.items || []);
+      return Array.isArray(arr) ? arr : [];
+    };
 
-      if (!Array.isArray(list)) continue;
+    const combined = [...extractList(d1), ...extractList(d2)];
 
-      for (const row of list) {
-        const key = `${row.CUST_NM || ""}_${row.AGE || ""}_${row.ADDR || ""}`;
-        if (!seen.has(key)) {
-          seen.add(key);
-          allRows.push(row);
-        }
+    if (combined.length === 0 && (d1?.ERROR_CODE || d2?.ERROR_CODE)) {
+      const errObj = d1?.ERROR_CODE ? d1 : d2;
+      if (String(errObj.ERROR_CODE) !== "03") {
+        return {
+          status: "API_ERROR",
+          errorCode: errObj.ERROR_CODE,
+          errorMsg: errObj.ERROR_MSG || "HUG API 오류 응답"
+        };
+      }
+    }
+
+    // 중복 제거
+    const allRows = [];
+    const seen = new Set();
+    for (const row of combined) {
+      const key = `${row.CUST_NM || ""}_${row.AGE || ""}_${row.ADDR || ""}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        allRows.push(row);
       }
     }
 
@@ -289,7 +296,7 @@ async function checkHugDefaulterList(landlordName, hugApiKey) {
         .replace(/\(주\)|주식회사/g, "")
         .toLowerCase();
 
-    const cleanTarget = normalizeName(landlordName);
+    const cleanTarget = normalizeName(rawTarget);
 
     const matches = allRows
       .filter(row => {
@@ -306,14 +313,12 @@ async function checkHugDefaulterList(landlordName, hugApiKey) {
     if (matches.length > 0) {
       return {
         status: "MATCH_FOUND",
-        totalChecked: allRows.length,
         matches
       };
     }
 
     return {
       status: "NO_MATCH",
-      totalChecked: allRows.length,
       stddDt: allRows[0]?.STDD_DT || allRows[0]?.stddDt || ""
     };
   } catch (err) {
