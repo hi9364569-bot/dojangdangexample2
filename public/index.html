@@ -49,6 +49,13 @@
       <!-- 범례 -->
       <div class="mt-5 pt-4 border-t border-slate-100 flex flex-wrap items-center gap-3 text-xs text-slate-600">
         <span class="font-semibold text-slate-700">자료 구분 기준:</span>
+
+
+
+
+
+
+        
         <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 font-medium">
           ● 공식자료 사실 (공공API·공적장부)
         </span>
@@ -195,8 +202,9 @@
     </div>
   </footer>
 
-  <script>
-    let isLiveApiMode = false;
+ <script>
+    // 1. 기본값을 true로 변경하여 접속 즉시 실제 API 모드로 시작
+    let isLiveApiMode = true;
 
     const depositInput = document.getElementById('inputDeposit');
     const depositWonHint = document.getElementById('depositWonHint');
@@ -217,8 +225,7 @@
       depositWonHint.textContent = `= ${formatKoreanMoney(val)}`;
     });
 
-    function toggleLiveMode() {
-      isLiveApiMode = !isLiveApiMode;
+    function applyModeUI() {
       const btn = document.getElementById('toggleLiveModeBtn');
       const badge = document.getElementById('modeBadge');
       const desc = document.getElementById('modeDesc');
@@ -227,22 +234,43 @@
 
       if (isLiveApiMode) {
         btn.textContent = '실제 API 모드: ON';
-        btn.classList.replace('bg-slate-800', 'bg-emerald-700');
+        btn.classList.remove('bg-slate-800');
+        btn.classList.add('bg-emerald-700');
         badge.textContent = '실제 API 연동 모드';
         badge.className = 'inline-flex items-center px-2 py-0.5 rounded font-semibold bg-emerald-200 text-emerald-900 text-xs';
-        desc.innerHTML = 'Netlify Functions(<code>/.netlify/functions/fetch-public-data</code>)를 통해 실제 공공데이터 API를 호출합니다. (환경변수 키 설정 필요)';
+        desc.innerHTML = '공공데이터 API와 실시간으로 연동되어 있습니다. 주소를 입력하고 <strong>공공자료 확인하기</strong>를 눌러주세요.';
         banner.className = 'bg-emerald-50 border-b border-emerald-200 px-4 py-2.5 text-xs sm:text-sm text-emerald-900';
         demoBtns.classList.add('opacity-40', 'pointer-events-none');
       } else {
         btn.textContent = '실제 API 모드: OFF';
-        btn.classList.replace('bg-emerald-700', 'bg-slate-800');
+        btn.classList.remove('bg-emerald-700');
+        btn.classList.add('bg-slate-800');
         badge.textContent = '시연용 화면';
         badge.className = 'inline-flex items-center px-2 py-0.5 rounded font-semibold bg-amber-200 text-amber-900 text-xs';
-        desc.innerHTML = '현재 기본 상태는 <strong>시연용 가상자료</strong>로 동작합니다. 상단 우측에서 <strong>실제 API 연동 모드</strong>로 전환할 수 있습니다.';
+        desc.innerHTML = '현재 <strong>시연용 가상자료</strong> 모드입니다. 우측 버튼을 눌러 실제 API 모드로 전환할 수 있습니다.';
         banner.className = 'bg-amber-50 border-b border-amber-200 px-4 py-2.5 text-xs sm:text-sm text-amber-900';
         demoBtns.classList.remove('opacity-40', 'pointer-events-none');
-        loadScenario('A');
       }
+    }
+
+    function toggleLiveMode() {
+      isLiveApiMode = !isLiveApiMode;
+      applyModeUI();
+      if (!isLiveApiMode) {
+        loadScenario('A');
+      } else {
+        showInitialGuide();
+      }
+    }
+
+    function showInitialGuide() {
+      const container = document.getElementById('resultsContainer');
+      container.innerHTML = `
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-8 text-center space-y-2">
+          <p class="text-sm font-semibold text-slate-800">확인하려는 동대문구 주택의 도로명주소와 조건을 입력해 주세요.</p>
+          <p class="text-xs text-slate-500">상단의 <strong>공공자료 확인하기</strong> 버튼을 누르면 건축물대장, 실거래가 비교비율, HUG 공개명단 대조 결과를 불러옵니다.</p>
+        </div>
+      `;
     }
 
     // 시연용 프리셋 데이터
@@ -371,7 +399,6 @@
       const landlordName = document.getElementById('inputLandlord').value.trim();
 
       if (!isLiveApiMode) {
-        // 시연용 모드: 사용자 입력값을 반영해 가상 계산 시연
         const baseTrades = demoScenarios.A.trades;
         let tradesObj;
         if (houseType === 'detached') {
@@ -396,7 +423,6 @@
         return;
       }
 
-      // 실제 Netlify Function 호출
       const submitBtn = document.getElementById('submitBtn');
       submitBtn.disabled = true;
       submitBtn.textContent = '공공데이터 API 조회 중...';
@@ -435,14 +461,12 @@
       const container = document.getElementById('resultsContainer');
       const { isDemo, queryTimestamp, address, building, trades, hug, depositManwon } = payload;
 
-      // 주소 변환 상세 오류 배너
       const addrErrorBanner = (address && address.status && address.status !== 'OK')
         ? `<div class="p-3.5 rounded-lg bg-rose-50 border border-rose-300 text-xs text-rose-900">
              <strong>[주소 변환 상세 오류]</strong> 상태: ${address.status} / 사유: ${address.error || '알 수 없음'}
            </div>`
         : '';
 
-      // 1. 건물 기본정보 카드 HTML
       let buildingHtml = '';
       if (building.status === 'OK') {
         buildingHtml = `
@@ -482,7 +506,6 @@
         `;
       }
 
-      // 2. 보증금 비교비율 카드 HTML
       let tradesHtml = '';
       if (trades.status === 'OK') {
         tradesHtml = `
@@ -515,7 +538,6 @@
         `;
       }
 
-      // 3. HUG 공개명단 대조 카드 HTML
       let hugHtml = '';
       if (hug.status === 'MATCH_FOUND') {
         const matchRows = hug.matches.map(m => `
@@ -566,7 +588,6 @@
           <span>조회 시각: ${queryTimestamp} ${isDemo ? '(시연용 가상자료)' : '(실시간 API 호출)'}</span>
         </div>
 
-        <!-- 카드 1: 건물 기본정보 -->
         <section class="bg-white rounded-xl border border-slate-200 shadow-sm p-5 sm:p-6">
           <div class="flex flex-wrap items-center justify-between gap-2">
             <h3 class="text-base font-bold text-slate-900">2-1. 건물 기본정보 및 위반건축물 확인 안내</h3>
@@ -576,7 +597,6 @@
           ${buildingHtml}
         </section>
 
-        <!-- 카드 2: 보증금 비교비율 -->
         <section class="bg-white rounded-xl border border-slate-200 shadow-sm p-5 sm:p-6">
           <div class="flex flex-wrap items-center justify-between gap-2">
             <h3 class="text-base font-bold text-slate-900">2-2. 유사 매매거래가 대비 보증금 비율</h3>
@@ -586,7 +606,6 @@
           ${tradesHtml}
         </section>
 
-        <!-- 카드 3: HUG 임대인 공개명단 -->
         <section class="bg-white rounded-xl border border-slate-200 shadow-sm p-5 sm:p-6">
           <div class="flex flex-wrap items-center justify-between gap-2">
             <h3 class="text-base font-bold text-slate-900">2-3. HUG 상습 채무불이행자 공개명단 대조</h3>
@@ -598,8 +617,11 @@
       `;
     }
 
-    // 초기 시나리오 A 로드
-    loadScenario('A');
+    // 접속 시 실제 API 모드 UI 즉시 적용 및 초기 안내 문구 표시
+    document.getElementById('inputAddress').value = '';
+    document.getElementById('inputLandlord').value = '';
+    applyModeUI();
+    showInitialGuide();
   </script>
 </body>
 </html>
