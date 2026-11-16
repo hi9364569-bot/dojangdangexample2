@@ -214,7 +214,7 @@ async function fetchRealEstateTrades(sigunguCd, houseType, targetArea, depositMa
   };
 }
 
-// 4. HUG 상습 채무불이행자 공개명단 조회 (HUG 서버 직접 이름 검색 + 전체 명단 대조 병행)
+// 4. HUG 상습 채무불이행자 공개명단 조회 (실제 응답 구조 및 건수 진단 포함)
 async function checkHugDefaulterList(landlordName, hugApiKey) {
   if (!landlordName || !landlordName.trim()) {
     return { status: "SKIPPED", message: "임대인 성명이 입력되지 않아 명단 대조를 건너뛰었습니다." };
@@ -223,109 +223,78 @@ async function checkHugDefaulterList(landlordName, hugApiKey) {
     return { status: "NO_KEY", error: "HUG_API_KEY가 설정되지 않았습니다." };
   }
 
-  const rawTarget = landlordName.trim();
-
   try {
-    // ① HUG 서버에 CUST_NM 파라미터로 직접 이름 검색 요청 + ② 기본 전체 목록 요청 병행
-    const searchUrl = new URL("https://www.khug.or.kr/defaultOnDebitList.do");
-    searchUrl.searchParams.set("API_KEY", hugApiKey);
-    searchUrl.searchParams.set("CUST_NM", rawTarget);
-    searchUrl.searchParams.set("numOfRows", "1000");
-    searchUrl.searchParams.set("pageNo", "1");
+    const urls = [
+      `https://www.khug.or.kr/defaultOnDebitList.do?API_KEY=${encodeURIComponent(hugApiKey)}`,
+      `https://www.khug.or.kr/defaultOnDebitList.do?API_KEY=${encodeURIComponent(hugApiKey)}&cur_page=2`,
+      `https://www.khug.or.kr/defaultOnDebitList.do?API_KEY=${encodeURIComponent(hugApiKey)}&cur_page=3`,
+      `https://www.khug.or.kr/defaultOnDebitList.do?API_KEY=${encodeURIComponent(hugApiKey)}&pageNo=2`,
+      `https://www.khug.or.kr/defaultOnDebitList.do?API_KEY=${encodeURIComponent(hugApiKey)}&pageNo=3`
+    ];
 
-    const defaultUrl = new URL("https://www.khug.or.kr/defaultOnDebitList.do");
-    defaultUrl.searchParams.set("API_KEY", hugApiKey);
-    defaultUrl.searchParams.set("numOfRows", "5000");
-    defaultUrl.searchParams.set("pageNo", "1");
+    const responses = await Promise.all(
+      urls.map(u => fetchWithTimeout(u, {}, 6000).then(r => r.text()).catch(() => ""))
+    );
 
-    const [searchRes, defaultRes] = await Promise.all([
-      fetchWithTimeout(searchUrl.toString(), {}, 6000).then(r => r.text()).catch(() => ""),
-      fetchWithTimeout(defaultUrl.toString(), {}, 6000).then(r => r.text()).catch(() => "")
-    ]);
-
-    const parseJsonSafe = (txt) => {
+    const parsedList = responses.map(txt => {
       try { return JSON.parse(txt); } catch { return null; }
-    };
+    });
 
-    const d1 = parseJsonSafe(searchRes);
-    const d2 = parseJsonSafe(defaultRes);
-
-    if (!d1 && !d2) {
+    const first = parsedList[0];
+    if (!first) {
       return {
         status: "API_ERROR",
         errorCode: "PARSE_ERROR",
-        errorMsg: "HUG 서버 응답을 해석할 수 없습니다. 공식 화면에서 확인해 주세요."
+        errorMsg: `원본 응답 앞부분: ${responses[0].slice(0, 120)}`
       };
     }
 
-    const extractList = (data) => {
-      if (!data || data?.ERROR_CODE) return [];
-      const arr = Array.isArray(data)
-        ? data
-        : (data?.data || data?.list || data?.items || data?.resultList || data?.body?.items || []);
-      return Array.isArray(arr) ? arr : [];
-    };
-
-    const combined = [...extractList(d1), ...extractList(d2)];
-
-    if (combined.length === 0 && (d1?.ERROR_CODE || d2?.ERROR_CODE)) {
-      const errObj = d1?.ERROR_CODE ? d1 : d2;
-      if (String(errObj.ERROR_CODE) !== "03") {
-        return {
-          status: "API_ERROR",
-          errorCode: errObj.ERROR_CODE,
-          errorMsg: errObj.ERROR_MSG || "HUG API 오류 응답"
-        };
-      }
+    if (first?.ERROR_CODE) {
+      return {
+        status: "API_ERROR",
+        errorCode: first.ERROR_CODE,
+        errorMsg: first.ERROR_MSG || "HUG API 오류"
+      };
     }
 
-    // 중복 제거
+    const extract = (d) => Array.isArray(d) ? d : (d?.data || d?.list || d?.items || d?.resultList || []);
     const allRows = [];
     const seen = new Set();
-    for (const row of combined) {
-      const key = `${row.CUST_NM || ""}_${row.AGE || ""}_${row.ADDR || ""}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        allRows.push(row);
+
+    for (const d of parsedList) {
+      for (const row of extract(d)) {
+        const key = `${row.CUST_NM || ""}_${row.AGE || ""}_${row.ADDR || ""}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          allRows.push(row);
+        }
       }
     }
 
-    const normalizeName = (str) =>
-      String(str || "")
-        .replace(/\s+/g, "")
-        .replace(/\(주\)|주식회사/g, "")
-        .toLowerCase();
-
-    const cleanTarget = normalizeName(rawTarget);
-
+    const cleanTarget = landlordName.replace(/\s+/g, "").toLowerCase();
     const matches = allRows
-      .filter(row => {
-        const candidate = normalizeName(row.CUST_NM || row.custNm || row["성명"]);
-        return candidate && (candidate === cleanTarget || candidate.includes(cleanTarget));
-      })
+      .filter(row => String(row.CUST_NM || "").replace(/\s+/g, "").toLowerCase().includes(cleanTarget))
       .map(row => ({
-        STDD_DT: row.STDD_DT || row.stddDt || "",
-        CUST_NM: row.CUST_NM || row.custNm || "",
-        AGE: row.AGE || row.age || "",
-        ADDR: row.ADDR || row.addr || ""
+        STDD_DT: row.STDD_DT || "",
+        CUST_NM: row.CUST_NM || "",
+        AGE: row.AGE || "",
+        ADDR: row.ADDR || ""
       }));
 
     if (matches.length > 0) {
-      return {
-        status: "MATCH_FOUND",
-        matches
-      };
+      return { status: "MATCH_FOUND", matches };
     }
 
+    const sampleNames = allRows.slice(0, 3).map(r => r.CUST_NM).join(", ");
     return {
       status: "NO_MATCH",
-      stddDt: allRows[0]?.STDD_DT || allRows[0]?.stddDt || ""
+      stddDt: `${allRows[0]?.STDD_DT || "미상"} (수신총건수: ${allRows.length}건 / 예시: ${sampleNames})`
     };
   } catch (err) {
     return {
       status: "API_ERROR",
-      errorCode: "TIMEOUT_OR_NET",
-      errorMsg: `HUG 서버 연결 지연 또는 오류 (${err.message})`
+      errorCode: "ERR",
+      errorMsg: err.message
     };
   }
 }
