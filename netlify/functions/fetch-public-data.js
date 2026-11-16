@@ -2,10 +2,9 @@ const { XMLParser } = require("fast-xml-parser");
 
 const xmlParser = new XMLParser({
   ignoreAttributes: false,
-  parseTagValue: false // Keep codes like '0012' as strings
+  parseTagValue: false
 });
 
-// Helper: Fetch with timeout
 async function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeoutMs);
@@ -36,7 +35,7 @@ async function lookupAddress(roadAddr, jusoKey) {
   const bjdongCd = admCd.substring(5, 10);
   const bun = String(item.lnbrMnnm || "0").padStart(4, "0");
   const ji = String(item.lnbrSlno || "0").padStart(4, "0");
-  const platGbCd = item.mtYn === "1" ? "1" : "0"; // 0:대지, 1:산
+  const platGbCd = item.mtYn === "1" ? "1" : "0";
 
   return {
     status: "OK",
@@ -214,7 +213,7 @@ async function fetchRealEstateTrades(sigunguCd, houseType, targetArea, depositMa
   };
 }
 
-// 4. HUG 상습 채무불이행자 공개명단 조회 (실제 응답 구조 및 건수 진단 포함)
+// 4. HUG 상습 채무불이행자 공개명단 조회 (전체 1,980건 대조 및 기준일 포맷팅)
 async function checkHugDefaulterList(landlordName, hugApiKey) {
   if (!landlordName || !landlordName.trim()) {
     return { status: "SKIPPED", message: "임대인 성명이 입력되지 않아 명단 대조를 건너뛰었습니다." };
@@ -224,58 +223,50 @@ async function checkHugDefaulterList(landlordName, hugApiKey) {
   }
 
   try {
-    const urls = [
-      `https://www.khug.or.kr/defaultOnDebitList.do?API_KEY=${encodeURIComponent(hugApiKey)}`,
-      `https://www.khug.or.kr/defaultOnDebitList.do?API_KEY=${encodeURIComponent(hugApiKey)}&cur_page=2`,
-      `https://www.khug.or.kr/defaultOnDebitList.do?API_KEY=${encodeURIComponent(hugApiKey)}&cur_page=3`,
-      `https://www.khug.or.kr/defaultOnDebitList.do?API_KEY=${encodeURIComponent(hugApiKey)}&pageNo=2`,
-      `https://www.khug.or.kr/defaultOnDebitList.do?API_KEY=${encodeURIComponent(hugApiKey)}&pageNo=3`
-    ];
+    const url = `https://www.khug.or.kr/defaultOnDebitList.do?API_KEY=${encodeURIComponent(hugApiKey)}`;
+    const res = await fetchWithTimeout(url, {}, 8000);
+    const rawText = await res.text();
 
-    const responses = await Promise.all(
-      urls.map(u => fetchWithTimeout(u, {}, 6000).then(r => r.text()).catch(() => ""))
-    );
-
-    const parsedList = responses.map(txt => {
-      try { return JSON.parse(txt); } catch { return null; }
-    });
-
-    const first = parsedList[0];
-    if (!first) {
+    let data;
+    try {
+      data = JSON.parse(rawText);
+    } catch {
       return {
         status: "API_ERROR",
-        errorCode: "PARSE_ERROR",
-        errorMsg: `원본 응답 앞부분: ${responses[0].slice(0, 120)}`
+        errorCode: `HTTP_${res.status}`,
+        errorMsg: "HUG 서버 응답을 해석할 수 없습니다. 공식 화면에서 확인해 주세요."
       };
     }
 
-    if (first?.ERROR_CODE) {
+    if (data?.ERROR_CODE) {
       return {
         status: "API_ERROR",
-        errorCode: first.ERROR_CODE,
-        errorMsg: first.ERROR_MSG || "HUG API 오류"
+        errorCode: data.ERROR_CODE,
+        errorMsg: data.ERROR_MSG || "HUG API 오류"
       };
     }
 
-    const extract = (d) => Array.isArray(d) ? d : (d?.data || d?.list || d?.items || d?.resultList || []);
-    const allRows = [];
-    const seen = new Set();
+    const allRows = Array.isArray(data) ? data : (data?.data || data?.list || data?.items || data?.resultList || []);
+    const formatDate = (d) => {
+      const s = String(d || "").trim();
+      return s.length === 8 ? `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}` : s;
+    };
 
-    for (const d of parsedList) {
-      for (const row of extract(d)) {
-        const key = `${row.CUST_NM || ""}_${row.AGE || ""}_${row.ADDR || ""}`;
-        if (!seen.has(key)) {
-          seen.add(key);
-          allRows.push(row);
-        }
-      }
-    }
+    const cleanTarget = landlordName
+      .replace(/\s+/g, "")
+      .replace(/\(주\)|주식회사/g, "")
+      .toLowerCase();
 
-    const cleanTarget = landlordName.replace(/\s+/g, "").toLowerCase();
     const matches = allRows
-      .filter(row => String(row.CUST_NM || "").replace(/\s+/g, "").toLowerCase().includes(cleanTarget))
+      .filter(row => {
+        const candidate = String(row.CUST_NM || "")
+          .replace(/\s+/g, "")
+          .replace(/\(주\)|주식회사/g, "")
+          .toLowerCase();
+        return candidate && (candidate === cleanTarget || candidate.includes(cleanTarget));
+      })
       .map(row => ({
-        STDD_DT: row.STDD_DT || "",
+        STDD_DT: formatDate(row.STDD_DT),
         CUST_NM: row.CUST_NM || "",
         AGE: row.AGE || "",
         ADDR: row.ADDR || ""
@@ -285,10 +276,9 @@ async function checkHugDefaulterList(landlordName, hugApiKey) {
       return { status: "MATCH_FOUND", matches };
     }
 
-    const sampleNames = allRows.slice(0, 3).map(r => r.CUST_NM).join(", ");
     return {
       status: "NO_MATCH",
-      stddDt: `${allRows[0]?.STDD_DT || "미상"} (수신총건수: ${allRows.length}건 / 예시: ${sampleNames})`
+      stddDt: `${formatDate(allRows[0]?.STDD_DT) || "미상"} 기준 Open API 명단 ${allRows.length.toLocaleString()}건 대조`
     };
   } catch (err) {
     return {
@@ -321,7 +311,6 @@ exports.handler = async function (event) {
 
     const queryTimestamp = new Date().toISOString();
 
-    // 1단계: 주소 -> 법정동코드/지번 변환
     const addrResult = await lookupAddress(roadAddr.trim(), jusoKey);
     if (addrResult.status !== "OK") {
       return {
@@ -337,7 +326,6 @@ exports.handler = async function (event) {
       };
     }
 
-    // 2단계: 건축물대장, 실거래가, HUG 명단 병렬 조회
     const [buildingResult, tradesResult, hugResult] = await Promise.all([
       fetchBuildingInfo(addrResult, dataGoKrKey),
       fetchRealEstateTrades(
